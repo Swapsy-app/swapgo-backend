@@ -1,57 +1,28 @@
 require("dotenv").config();
 const express=require("express");
 const nodemailer = require('nodemailer');
+const { specs, swaggerUi } = require('./swagger');
 require("./DataBase/Connection");
 const bodyParser = require("body-parser");
-const swaggerJsdoc = require("swagger-jsdoc"),
-swaggerUi = require("swagger-ui-express");
+
 
 const userRouter=require("./Routes/UserRoutes");
 
+
+
+
 const app=express();
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs));
+
 app.use(express.json());
-
-const options = {
-    definition: {
-      openapi: "3.1.0",
-      info: {
-        title: "SwapKaro Express API with Swagger",
-        version: "0.1.0",
-        description:
-          "This is a simple CRUD API application made with Express and documented with Swagger",
-        license: {
-          name: "---",
-          url: "---",
-        },
-        contact: {
-          name: "SwapKaro",
-          url: "https://swapkaro.com",
-          email: "swapkaro@email.com",
-        },
-      },
-      servers: [
-        {
-          url: "http://localhost:3000/",
-        },
-      ],
-    },
-    apis: ["./app.js"],
-  };
+app.use(bodyParser.json());
 
 
 
-
-
-const specs = swaggerJsdoc(options);
-app.use(
-  "/api-docs",
-  swaggerUi.serve,
-  swaggerUi.setup(specs,{ explorer: true })
-);
-app.use(userRouter);
 
 
 //I'm Starting Code Here
+app.use(userRouter);
 
 // Mail transporter
 const transporter = nodemailer.createTransport({

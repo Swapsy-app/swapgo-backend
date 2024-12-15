@@ -2,6 +2,39 @@
 const express=require("express");
 const userRouter=express.Router();
 
+/** 
+*@swagger
+*./signup:
+*  post:
+*    summary: Create a new user/Signup
+*    description: This endpoint is used to create a new user
+*    consumes:
+*      - application/json
+*    parameters:
+*      - in: body
+*        name: user
+*        description: User object
+*        schema:
+*          type: object
+*          required:
+*            - name
+*            - email
+*            - password
+*          properties:
+*            name:
+*              type: string
+*              description: User name
+*            email:
+*              type: string
+*              format: email
+*              description: User email
+*            password:
+*              type: string
+*              description: User password
+*    responses:
+*      '201':
+*        description: User created successfully
+*/
 // Handling signup request using router
 userRouter.post("/signup",async (req,res,next)=>{
     const { name, email, mobile, password } = req.body;
