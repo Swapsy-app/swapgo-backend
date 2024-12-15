@@ -4,9 +4,10 @@ const userRouter=express.Router();
 
 /** 
 *@swagger
-*./signup:
+* /signup:
 *  post:
 *    summary: Create a new user/Signup
+*    tags: [User SignUp Route]
 *    description: This endpoint is used to create a new user
 *    consumes:
 *      - application/json

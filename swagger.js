@@ -4,14 +4,29 @@ swaggerUi = require("swagger-ui-express");
 
 const options = {
     definition: {
-        openapi: '3.0.0',
-        info: {
-          title: 'Swagger Express API',
-          version: '1.0.0',
-          description: 'A simple Express API with Swagger documentation',
+      openapi: "3.1.0",
+      info: {
+        title: "SwapKaro Express API with Swagger",
+        version: "0.1.0",
+        description:
+          "This is a simple CRUD API application made with Express and documented with Swagger",
+        license: {
+          name: "---",
+          url: "---",
+        },
+        contact: {
+          name: "SwapKaro",
+          url: "https://swapkaro.com",
+          email: "swapkaro@email.com",
         },
       },
-      apis: ['./Routes/*.js'], // Path to your API routes
+      servers: [
+        {
+          url: "http://localhost:3000/",
+        },
+      ],
+    },
+    apis: ["./Routes/*.js"],
   };
 
 
