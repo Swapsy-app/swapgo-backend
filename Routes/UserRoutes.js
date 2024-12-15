@@ -1,6 +1,11 @@
 // Importing express module
 const express=require("express");
+const bcrypt = require('bcrypt');
+const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
 const userRouter=express.Router();
+const User=require("../Models/User");
+const {sendEmail}=require("../Modules/Email");
 
 /** 
 *@swagger
