@@ -60,10 +60,10 @@ userRouter.post("/signup",async (req,res,next)=>{
 
         await sendEmail(email, 'Your OTP for Verification', `Your OTP is : ${otp}`);
 
-        res.status(201).send('Signup successful. Please verify your email.');
+        res.status(201).send({'message':'Signup successful. Please verify your email.'});
     } catch (err) {
         console.error(err);
-        res.status(500).send('Error signing up');
+        res.status(500).send({'messsage':err.errmsg});
     }
 
     
