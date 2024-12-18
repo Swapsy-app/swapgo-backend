@@ -30,6 +30,9 @@ const {sendEmail}=require("../Modules/Email");
 *            name:
 *              type: string
 *              description: User name
+*            mobile:
+*              type: string
+*              description: User mobile number
 *            email:
 *              type: string
 *              format: email
