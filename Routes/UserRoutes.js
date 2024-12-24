@@ -72,5 +72,27 @@ userRouter.post("/signup",async (req,res,next)=>{
     
 });
 
+// Verify OTP route for SignUp
+// Write documentation of swagger here👇
+
+userRouter.post('/verify-signup', async (req, res) => {
+    const { email, otp } = req.body;
+    try {
+        const user = await User.findOne({ email, otp });
+        if (!user || user.otpExpires < Date.now()) {
+            return res.status(400).send('Invalid or expired OTP');
+        }
+
+        user.otp = null;
+        user.otpExpires = null;
+        await user.save();
+
+        res.send('Email verified. You can now login.');
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Error verifying OTP');
+    }
+});
+
 // Exporting the router
 module.exports=userRouter
