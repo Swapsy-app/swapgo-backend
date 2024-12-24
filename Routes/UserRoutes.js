@@ -71,6 +71,28 @@ userRouter.post("/signup",async (req,res,next)=>{
 
     
 });
+// Verify OTP for Sign Up
+userRouter.post('/signup/otp/verify', async (req, res) => {
+    const { email, otp } = req.body;
+    try {
+        const user = await User.findOne({ email, otp });
+        if (!user) return res.status(400).send('Invalid OTP');
+
+        if (user.otpExpires < Date.now()) {
+            return res.status(400).send('OTP expired');
+        }
+
+        user.verified = true;
+        user.otp = null;
+        user.otpExpires = null;
+        await user.save();
+
+        res.send('Email verified successfully');
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Error verifying OTP');
+    }
+});
 
 // Verify OTP route for SignUp
 // Write documentation of swagger here👇
@@ -93,6 +115,92 @@ userRouter.post('/verify-signup', async (req, res) => {
         res.status(500).send('Error verifying OTP');
     }
 });
+// Generate OTP for Sign In
+userRouter.post('/signin/otp', async (req, res) => {
+    const { email } = req.body;
+    try {
+        const user = await User.findOne({ email });
+        if (!user) return res.status(400).send('User not found');
+
+        const otp = crypto.randomInt(100000, 999999).toString();
+        user.otp = otp;
+        user.otpExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
+        await user.save();
+
+        await sendEmail(email, 'Verify Your Login', `Your OTP is ${otp}`);
+        res.send('OTP sent to your email. Please verify to login.');
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Error generating OTP');
+    }
+});
+
+// Verify OTP for Sign In
+userRouter.post('/signin/otp/verify', async (req, res) => {
+    const { email, otp } = req.body;
+    try {
+        const user = await User.findOne({ email, otp });
+        if (!user) return res.status(400).send('Invalid OTP');
+
+        if (user.otpExpires < Date.now()) {
+            return res.status(400).send('OTP expired');
+        }
+
+        user.otp = null;
+        user.otpExpires = null;
+        await user.save();
+
+        // Generate a token or session after successful login
+        res.send('Login successful');
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Error verifying OTP');
+    }
+});
+
+
+// Forgot Password route
+userRouter.post('/forgot-password', async (req, res) => {
+    const { email } = req.body;
+    try {
+        const user = await User.findOne({ email });
+        if (!user) return res.status(400).send('User not found');
+
+        const resetToken = crypto.randomBytes(32).toString('hex');
+        user.resetPasswordToken = resetToken;
+        user.resetPasswordExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
+        await user.save();
+
+        const resetUrl = `http://localhost:3000/reset-password/${resetToken}`;
+        await sendEmail(email, 'Reset Your Password', `Click the link to reset your password: ${resetUrl}`);
+
+        res.send('Password reset email sent.');
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Error sending reset email');
+    }
+});
+
+// Reset Password route
+userRouter.post('/reset-password/:token', async (req, res) => {
+    const { token } = req.params;
+    const { password } = req.body;
+    try {
+        const user = await User.findOne({ resetPasswordToken: token, resetPasswordExpires: { $gt: Date.now() } });
+        if (!user) return res.status(400).send('Invalid or expired reset token');
+
+        user.password = await bcrypt.hash(password, 10);
+        user.resetPasswordToken = null;
+        user.resetPasswordExpires = null;
+        await user.save();
+
+        res.send('Password reset successful. You can now login.');
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Error resetting password');
+    }
+});
+
 
 // Exporting the router
-module.exports=userRouter
+module.exports=userRouter;
