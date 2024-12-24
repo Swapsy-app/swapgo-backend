@@ -45,7 +45,7 @@ const {sendEmail}=require("../Modules/Email");
 *        description: User created successfully
 */
 // Handling signup request using router
-userRouter.post("/signup",async (req,res,next)=>{
+userRouter.post("/signup", async (req, res, next) => {
     const { name, email, mobile, password } = req.body;
     try {
         const hashedPassword = await bcrypt.hash(password, 10);
@@ -59,17 +59,20 @@ userRouter.post("/signup",async (req,res,next)=>{
             otp,
             otpExpires: Date.now() + 10 * 60 * 1000 // 10 minutes
         });
+
         await newUser.save();
-
-        await sendEmail(email, 'Your OTP for Verification', `Your OTP is : ${otp}`);
-
-        res.status(201).send({'message':'Signup successful. Please verify your email.'});
     } catch (err) {
-        console.error(err);
-        res.status(500).send({'messsage':err.errmsg});
+        console.error('Error saving new user:', err);
+        return res.status(500).send({ 'message': 'Error creating user. Please try again later.' });
     }
 
-    
+    try {
+        await sendEmail(email, 'Your OTP for Verification', `Your OTP is : ${otp}`);
+        res.status(201).send({ 'message': 'Signup successful. Please verify your email.' });
+    } catch (err) {
+        console.error('Error sending OTP email:', err);
+        res.status(500).send({ 'message': 'Signup successful, but failed to send OTP email. Please try again later.' });
+    }
 });
 
 
@@ -81,7 +84,7 @@ userRouter.post('/signup/otp/verify', async (req, res) => {
     try {
         const user = await User.findOne({ email, otp });
         if (!user || user.otpExpires < Date.now()) {
-            return res.status(400).send('Invalid or expired OTP');
+            return res.status(400).send({'message': 'Invalid or expired OTP'});
         }
 
         user.otp = null;

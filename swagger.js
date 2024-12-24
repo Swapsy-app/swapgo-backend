@@ -11,7 +11,7 @@ const options = {
         description:
           "This is a simple CRUD API application made with Express and documented with Swagger",
         license: {
-          name: "---",
+          name: "MIT",
           url: "---",
         },
         contact: {
@@ -22,7 +22,7 @@ const options = {
       },
       servers: [
         {
-          url: "http://localhost:3000/",
+          url: ["http://localhost:3000/"],
         },
       ],
     },
