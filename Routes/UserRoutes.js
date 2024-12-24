@@ -71,33 +71,12 @@ userRouter.post("/signup",async (req,res,next)=>{
 
     
 });
-// Verify OTP for Sign Up
-userRouter.post('/signup/otp/verify', async (req, res) => {
-    const { email, otp } = req.body;
-    try {
-        const user = await User.findOne({ email, otp });
-        if (!user) return res.status(400).send('Invalid OTP');
 
-        if (user.otpExpires < Date.now()) {
-            return res.status(400).send('OTP expired');
-        }
-
-        user.verified = true;
-        user.otp = null;
-        user.otpExpires = null;
-        await user.save();
-
-        res.send('Email verified successfully');
-    } catch (err) {
-        console.error(err);
-        res.status(500).send('Error verifying OTP');
-    }
-});
 
 // Verify OTP route for SignUp
 // Write documentation of swagger here👇
 
-userRouter.post('/verify-signup', async (req, res) => {
+userRouter.post('/signup/otp/verify', async (req, res) => {
     const { email, otp } = req.body;
     try {
         const user = await User.findOne({ email, otp });
@@ -113,6 +92,24 @@ userRouter.post('/verify-signup', async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).send('Error verifying OTP');
+    }
+});
+// SignIn with password route
+userRouter.post('/signin', async (req, res) => {
+    const { email, password } = req.body;
+    try {
+        const user = await User.findOne({ email });
+        if (!user) return res.status(400).send('User not found');
+
+        const isPasswordValid = await bcrypt.compare(password, user.password);
+        if (!isPasswordValid) return res.status(400).send('Invalid credentials');
+
+        const token = jwt.sign({ id: user._id }, 'your-secret-key', { expiresIn: '1h' });
+
+        res.send({ message: 'Login successful', token });
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Error signing in');
     }
 });
 // Generate OTP for Sign In
