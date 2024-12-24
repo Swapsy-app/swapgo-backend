@@ -158,6 +158,27 @@ userRouter.post('/signin/otp/verify', async (req, res) => {
     }
 });
 
+// Resend OTP route
+userRouter.post('/resend-otp', async (req, res) => {
+    const { email } = req.body;
+    try {
+        const user = await User.findOne({ email });
+        if (!user) return res.status(400).send('User not found');
+
+        const otp = crypto.randomInt(100000, 999999).toString();
+        user.otp = otp;
+        user.otpExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
+        await user.save();
+
+        await sendEmail(email, 'Your OTP', `Your OTP is: ${otp}`);
+
+        res.send('OTP resent to your email.');
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Error resending OTP');
+    }
+});
+
 
 // Forgot Password route
 userRouter.post('/forgot-password', async (req, res) => {

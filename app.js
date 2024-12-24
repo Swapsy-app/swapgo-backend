@@ -24,6 +24,10 @@ app.use(bodyParser.json());
 //I'm Starting Code Here
 app.use(userRouter);
 
+app.get("/",(req,res)=>{
+    res.send("Welcome to my API");
+})
+
 
 //testing for email message
 //sendEmail("himanshudey19@gmail.com","Hello","Hello");

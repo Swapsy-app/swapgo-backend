@@ -6,7 +6,9 @@ const userSchema = new mongoose.Schema({
     mobile: {type:String,unique:true},
     password: String,
     otp: String,
-    otpExpires: Date
+    otpExpires: Date,
+    resetPasswordToken: String,
+    resetPasswordExpires: Date
 });
 
 const User = mongoose.model('User', userSchema);
