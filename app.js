@@ -1,8 +1,8 @@
 require("dotenv").config();
 const express=require("express");
-
 const { specs, swaggerUi } = require('./swagger');
 require("./DataBase/Connection");
+require("./Seeder/seedDatabase");
 const bodyParser = require("body-parser");
 
 
