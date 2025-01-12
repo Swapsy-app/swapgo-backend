@@ -45,33 +45,28 @@ const {sendEmail}=require("../Modules/Email");
 *        description: User created successfully
 */
 // Handling signup request using router
+const tempUsers = new Map(); // Use Map to store temporary users by email
+
 userRouter.post("/signup", async (req, res, next) => {
     const { name, email, mobile, password } = req.body;
     try {
         const hashedPassword = await bcrypt.hash(password, 10);
         const otp = crypto.randomInt(100000, 999999).toString();
 
-        const newUser = new User({
+        tempUsers.set(email, {
             name,
             email,
             mobile,
             password: hashedPassword,
             otp,
-            otpExpires: Date.now() + 10 * 60 * 1000 // 10 minutes
+            otpExpires: Date.now() + 10 * 60 * 1000, // 10 minutes
         });
 
-        await newUser.save();
+        await sendEmail(email, 'Your OTP for Verification', `Your OTP is: ${otp}`);
+        res.status(201).send({ message: 'Signup initiated. Please verify your email.' });
     } catch (err) {
-        console.error('Error saving new user:', err);
-        return res.status(500).send({ 'message': 'Error creating user. Please try again later.' });
-    }
-
-    try {
-        await sendEmail(email, 'Your OTP for Verification', `Your OTP is : ${otp}`);
-        res.status(201).send({ 'message': 'Signup successful. Please verify your email.' });
-    } catch (err) {
-        console.error('Error sending OTP email:', err);
-        res.status(500).send({ 'message': 'Signup successful, but failed to send OTP email. Please try again later.' });
+        console.error('Error during signup:', err);
+        res.status(500).send({ message: 'Error during signup. Please try again.' });
     }
 });
 
@@ -81,22 +76,30 @@ userRouter.post("/signup", async (req, res, next) => {
 
 userRouter.post('/signup/otp/verify', async (req, res) => {
     const { email, otp } = req.body;
+
+    const tempUser = tempUsers.get(email);
+    if (!tempUser || tempUser.otp !== otp || tempUser.otpExpires < Date.now()) {
+        return res.status(400).send({ message: 'Invalid or expired OTP' });
+    }
+
     try {
-        const user = await User.findOne({ email, otp });
-        if (!user || user.otpExpires < Date.now()) {
-            return res.status(400).send({'message': 'Invalid or expired OTP'});
-        }
+        const newUser = new User({
+            name: tempUser.name,
+            email: tempUser.email,
+            mobile: tempUser.mobile,
+            password: tempUser.password,
+        });
 
-        user.otp = null;
-        user.otpExpires = null;
-        await user.save();
+        await newUser.save();
+        tempUsers.delete(email); // Remove the temporary user after saving
 
-        res.send('Email verified. You can now login.');
+        res.send({ message: 'Email verified and user created successfully. You can now login.' });
     } catch (err) {
-        console.error(err);
-        res.status(500).send('Error verifying OTP');
+        console.error('Error saving verified user:', err);
+        res.status(500).send({ message: 'Error saving user. Please try again.' });
     }
 });
+
 // SignIn with password route
 userRouter.post('/signin', async (req, res) => {
     const { email, password } = req.body;
@@ -182,43 +185,49 @@ userRouter.post('/resend-otp', async (req, res) => {
 
 // Forgot Password route
 userRouter.post('/forgot-password', async (req, res) => {
-    const { email } = req.body;
+    const { email, newPassword, confirmPassword } = req.body;
+
+    if (newPassword !== confirmPassword) {
+        return res.status(400).send({ message: 'Passwords do not match' });
+    }
+
     try {
         const user = await User.findOne({ email });
-        if (!user) return res.status(400).send('User not found');
+        if (!user) return res.status(400).send({ message: 'User not found' });
 
-        const resetToken = crypto.randomBytes(32).toString('hex');
-        user.resetPasswordToken = resetToken;
+        const otp = crypto.randomInt(100000, 999999).toString();
+        user.resetPasswordToken = otp;
         user.resetPasswordExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
+        user.newPassword = await bcrypt.hash(newPassword, 10); // Store the hashed new password temporarily
         await user.save();
 
-        const resetUrl = `http://localhost:3000/reset-password/${resetToken}`;
-        await sendEmail(email, 'Reset Your Password', `Click the link to reset your password: ${resetUrl}`);
-
-        res.send('Password reset email sent.');
+        await sendEmail(email, 'OTP for Password Reset', `Your OTP is: ${otp}`);
+        res.send({ message: 'OTP sent to your email' });
     } catch (err) {
         console.error(err);
-        res.status(500).send('Error sending reset email');
+        res.status(500).send({ message: 'Error sending OTP' });
     }
 });
 
-// Reset Password route
-userRouter.post('/reset-password/:token', async (req, res) => {
-    const { token } = req.params;
-    const { password } = req.body;
-    try {
-        const user = await User.findOne({ resetPasswordToken: token, resetPasswordExpires: { $gt: Date.now() } });
-        if (!user) return res.status(400).send('Invalid or expired reset token');
+// Verify OTP and Reset Password - Step 2: Verify OTP and update password
+userRouter.post('/reset-password/verify-otp', async (req, res) => {
+    const { email, otp } = req.body;
 
-        user.password = await bcrypt.hash(password, 10);
+    try {
+        const user = await User.findOne({ email, resetPasswordToken: otp, resetPasswordExpires: { $gt: Date.now() } });
+        if (!user) return res.status(400).send({ message: 'Invalid or expired OTP' });
+
+        // Update password and clear OTP fields
+        user.password = user.newPassword; // Use the hashed password stored temporarily
+        user.newPassword = null; // Clear the temporary password
         user.resetPasswordToken = null;
         user.resetPasswordExpires = null;
         await user.save();
 
-        res.send('Password reset successful. You can now login.');
+        res.send({ message: 'Password reset successful. You can now login.' });
     } catch (err) {
         console.error(err);
-        res.status(500).send('Error resetting password');
+        res.status(500).send({ message: 'Error resetting password' });
     }
 });
 
