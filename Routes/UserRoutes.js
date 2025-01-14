@@ -1,11 +1,31 @@
-// Importing express module
-const express=require("express");
-const bcrypt = require('bcrypt');
-const crypto = require('crypto');
-const jwt = require('jsonwebtoken');
-const userRouter=express.Router();
-const User=require("../Models/User");
-const {sendEmail}=require("../Modules/Email");
+// Importing required modules
+const express = require("express");
+const bcrypt = require("bcrypt");
+const crypto = require("crypto");
+const jwt = require("jsonwebtoken");
+const userRouter = express.Router();
+const User = require("../Models/User");
+const { sendEmail } = require("../Modules/Email");
+
+// AES encryption key and initialization vector (IV)
+const encryptionKey = crypto.randomBytes(32); // 256-bit key
+const iv = crypto.randomBytes(16); // 128-bit IV
+
+// Function to encrypt data
+function encrypt(data) {
+    const cipher = crypto.createCipheriv("aes-256-cbc", encryptionKey, iv);
+    let encrypted = cipher.update(data, "utf8", "hex");
+    encrypted += cipher.final("hex");
+    return encrypted;
+}
+
+// Function to decrypt data
+function decrypt(data) {
+    const decipher = crypto.createDecipheriv("aes-256-cbc", encryptionKey, iv);
+    let decrypted = decipher.update(data, "hex", "utf8");
+    decrypted += decipher.final("utf8");
+    return decrypted;
+}
 
 /** 
 *@swagger
@@ -45,192 +65,231 @@ const {sendEmail}=require("../Modules/Email");
 *        description: User created successfully
 */
 // Handling signup request using router
-const tempUsers = new Map(); // Use Map to store temporary users by email
-
-userRouter.post("/signup", async (req, res, next) => {
+userRouter.post("/signup", async (req, res) => {
     const { name, email, mobile, password } = req.body;
+
     try {
+        const existingUser = await User.findOne({ email });
+
+        if (existingUser && !existingUser.isVerified) {
+            return res.status(400).send({ message: "Email already registered but not verified. Please verify your email." });
+        }
+
+        if (existingUser) {
+            return res.status(400).send({ message: "Email already registered. Please login." });
+        }
+
         const hashedPassword = await bcrypt.hash(password, 10);
         const otp = crypto.randomInt(100000, 999999).toString();
+        const encryptedOtp = encrypt(otp);
 
-        tempUsers.set(email, {
+        const newUser = new User({
             name,
             email,
             mobile,
             password: hashedPassword,
-            otp,
-            otpExpires: Date.now() + 10 * 60 * 1000, // 10 minutes
+            otp: encryptedOtp,
+            otpExpires: Date.now() + 10 * 60 * 1000 // 10 minutes
         });
 
-        await sendEmail(email, 'Your OTP for Verification', `Your OTP is: ${otp}`);
-        res.status(201).send({ message: 'Signup initiated. Please verify your email.' });
+        await newUser.save();
+
+        await sendEmail(email, "Your OTP for Verification", `Your OTP is: ${otp}`);
+        res.status(201).send({ message: "Signup successful. Please verify your email." });
     } catch (err) {
-        console.error('Error during signup:', err);
-        res.status(500).send({ message: 'Error during signup. Please try again.' });
+        console.error("Error saving new user:", err);
+        res.status(500).send({ message: "Error creating user. Please try again later." });
     }
 });
 
 
 // Verify OTP route for SignUp
-// Write documentation of swagger here👇
-
-userRouter.post('/signup/otp/verify', async (req, res) => {
+userRouter.post("/signup/otp/verify", async (req, res) => {
     const { email, otp } = req.body;
 
-    const tempUser = tempUsers.get(email);
-    if (!tempUser || tempUser.otp !== otp || tempUser.otpExpires < Date.now()) {
-        return res.status(400).send({ message: 'Invalid or expired OTP' });
-    }
-
-    try {
-        const newUser = new User({
-            name: tempUser.name,
-            email: tempUser.email,
-            mobile: tempUser.mobile,
-            password: tempUser.password,
-        });
-
-        await newUser.save();
-        tempUsers.delete(email); // Remove the temporary user after saving
-
-        res.send({ message: 'Email verified and user created successfully. You can now login.' });
-    } catch (err) {
-        console.error('Error saving verified user:', err);
-        res.status(500).send({ message: 'Error saving user. Please try again.' });
-    }
-});
-
-// SignIn with password route
-userRouter.post('/signin', async (req, res) => {
-    const { email, password } = req.body;
     try {
         const user = await User.findOne({ email });
-        if (!user) return res.status(400).send('User not found');
 
-        const isPasswordValid = await bcrypt.compare(password, user.password);
-        if (!isPasswordValid) return res.status(400).send('Invalid credentials');
+        if (!user) return res.status(400).send({ message: "User not found" });
 
-        const token = jwt.sign({ id: user._id }, 'your-secret-key', { expiresIn: '1h' });
+        const decryptedOtp = decrypt(user.otp);
+        if (decryptedOtp !== otp || user.otpExpires < Date.now()) {
+            return res.status(400).send({ message: "Invalid or expired OTP" });
+        }
 
-        res.send({ message: 'Login successful', token });
+        user.otp = null;
+        user.otpExpires = null;
+        user.isVerified = true; // Mark as verified
+        await user.save();
+
+        res.send("Email verified. You can now login.");
     } catch (err) {
-        console.error(err);
-        res.status(500).send('Error signing in');
+        console.error("Error verifying OTP:", err);
+        res.status(500).send("Error verifying OTP");
     }
 });
+
+
+// SignIn with password route
+userRouter.post("/signin", async (req, res) => {
+    const { email, password } = req.body;
+
+    try {
+        const user = await User.findOne({ email });
+
+        if (!user || !user.isVerified) {
+            return res.status(400).send("User not registered or email not verified. Please signup and verify your email.");
+        }
+
+        const isPasswordValid = await bcrypt.compare(password, user.password);
+        if (!isPasswordValid) return res.status(400).send("Invalid credentials");
+
+        const token = jwt.sign({ id: user._id }, "your-secret-key", { expiresIn: "1h" });
+
+        res.send({ message: "Login successful", token });
+    } catch (err) {
+        console.error("Error signing in:", err);
+        res.status(500).send("Error signing in");
+    }
+});
+
+
 // Generate OTP for Sign In
-userRouter.post('/signin/otp', async (req, res) => {
+userRouter.post("/signin/otp", async (req, res) => {
     const { email } = req.body;
     try {
         const user = await User.findOne({ email });
-        if (!user) return res.status(400).send('User not found');
+        if (!user) return res.status(400).send("User not found");
+
+        if (!user.isVerified) {
+            return res.status(400).send("User not verified. Please complete the signup process.");
+        }
 
         const otp = crypto.randomInt(100000, 999999).toString();
-        user.otp = otp;
+        const encryptedOtp = encrypt(otp);
+        user.otp = encryptedOtp;
         user.otpExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
         await user.save();
 
-        await sendEmail(email, 'Verify Your Login', `Your OTP is ${otp}`);
-        res.send('OTP sent to your email. Please verify to login.');
+        await sendEmail(email, "Verify Your Login", `Your OTP is ${otp}`);
+        res.send("OTP sent to your email. Please verify to login.");
     } catch (err) {
         console.error(err);
-        res.status(500).send('Error generating OTP');
+        res.status(500).send("Error generating OTP");
     }
 });
 
+
 // Verify OTP for Sign In
-userRouter.post('/signin/otp/verify', async (req, res) => {
+userRouter.post("/signin/otp/verify", async (req, res) => {
     const { email, otp } = req.body;
     try {
-        const user = await User.findOne({ email, otp });
-        if (!user) return res.status(400).send('Invalid OTP');
+        const user = await User.findOne({ email });
+        if (!user) return res.status(400).send("Invalid OTP");
 
-        if (user.otpExpires < Date.now()) {
-            return res.status(400).send('OTP expired');
+        const decryptedOtp = decrypt(user.otp);
+        if (decryptedOtp !== otp || user.otpExpires < Date.now()) {
+            return res.status(400).send("OTP expired");
         }
 
         user.otp = null;
         user.otpExpires = null;
         await user.save();
 
-        // Generate a token or session after successful login
-        res.send('Login successful');
+        res.send("Login successful");
     } catch (err) {
         console.error(err);
-        res.status(500).send('Error verifying OTP');
+        res.status(500).send("Error verifying OTP");
     }
 });
 
 // Resend OTP route
-userRouter.post('/resend-otp', async (req, res) => {
+userRouter.post("/resend-otp", async (req, res) => {
     const { email } = req.body;
     try {
         const user = await User.findOne({ email });
-        if (!user) return res.status(400).send('User not found');
+        if (!user) return res.status(400).send("User not found");
 
         const otp = crypto.randomInt(100000, 999999).toString();
-        user.otp = otp;
+        const encryptedOtp = encrypt(otp);
+        user.otp = encryptedOtp;
         user.otpExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
         await user.save();
 
-        await sendEmail(email, 'Your OTP', `Your OTP is: ${otp}`);
+        await sendEmail(email, "Your OTP", `Your OTP is: ${otp}`);
 
-        res.send('OTP resent to your email.');
+        res.send("OTP resent to your email.");
     } catch (err) {
         console.error(err);
-        res.status(500).send('Error resending OTP');
+        res.status(500).send("Error resending OTP");
     }
 });
-
 
 // Forgot Password route
-userRouter.post('/forgot-password', async (req, res) => {
-    const { email, newPassword, confirmPassword } = req.body;
-
-    if (newPassword !== confirmPassword) {
-        return res.status(400).send({ message: 'Passwords do not match' });
-    }
-
+userRouter.post("/forgot-password", async (req, res) => {
+    const { email } = req.body;
     try {
         const user = await User.findOne({ email });
-        if (!user) return res.status(400).send({ message: 'User not found' });
+        if (!user) return res.status(400).send("User not found");
 
         const otp = crypto.randomInt(100000, 999999).toString();
-        user.resetPasswordToken = otp;
-        user.resetPasswordExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
-        user.newPassword = await bcrypt.hash(newPassword, 10); // Store the hashed new password temporarily
+        const encryptedOtp = encrypt(otp);
+        user.otp = encryptedOtp;
+        user.otpExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
         await user.save();
 
-        await sendEmail(email, 'OTP for Password Reset', `Your OTP is: ${otp}`);
-        res.send({ message: 'OTP sent to your email' });
+        await sendEmail(email, "Your OTP for Password Reset", `Your OTP is: ${otp}`);
+        res.send("OTP sent to your email.");
     } catch (err) {
         console.error(err);
-        res.status(500).send({ message: 'Error sending OTP' });
+        res.status(500).send("Error sending OTP");
     }
 });
 
-// Verify OTP and Reset Password - Step 2: Verify OTP and update password
-userRouter.post('/reset-password/verify-otp', async (req, res) => {
+userRouter.post("forget-pass/verify-otp", async (req, res) => {
     const { email, otp } = req.body;
-
     try {
-        const user = await User.findOne({ email, resetPasswordToken: otp, resetPasswordExpires: { $gt: Date.now() } });
-        if (!user) return res.status(400).send({ message: 'Invalid or expired OTP' });
+        const user = await User.findOne({ email });
+        if (!user) return res.status(400).send("User not found");
 
-        // Update password and clear OTP fields
-        user.password = user.newPassword; // Use the hashed password stored temporarily
-        user.newPassword = null; // Clear the temporary password
-        user.resetPasswordToken = null;
-        user.resetPasswordExpires = null;
+        const decryptedOtp = decrypt(user.otp);
+        if (decryptedOtp !== otp || user.otpExpires < Date.now()) {
+            return res.status(400).send("Invalid or expired OTP");
+        }
+
+        user.otp = null;
+        user.otpExpires = null;
         await user.save();
 
-        res.send({ message: 'Password reset successful. You can now login.' });
+        res.send("OTP verified. You can now reset your password.");
     } catch (err) {
         console.error(err);
-        res.status(500).send({ message: 'Error resetting password' });
+        res.status(500).send("Error verifying OTP");
+    }
+});
+
+
+// Reset Password route
+userRouter.post("/reset-password", async (req, res) => {
+    const { email, newPassword, confirmPassword } = req.body;
+    try {
+        if (newPassword !== confirmPassword) {
+            return res.status(400).send("Passwords do not match");
+        }
+
+        const user = await User.findOne({ email });
+        if (!user) return res.status(400).send("User not found");
+
+        user.password = await bcrypt.hash(newPassword, 10);
+        await user.save();
+
+        res.send("Password reset successful. You can now login.");
+    } catch (err) {
+        console.error(err);
+        res.status(500).send("Error resetting password");
     }
 });
 
 
 // Exporting the router
-module.exports=userRouter;
+module.exports = userRouter;

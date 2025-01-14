@@ -7,8 +7,7 @@ const userSchema = new mongoose.Schema({
     password: String,
     otp: String,
     otpExpires: Date,
-    resetPasswordToken: String,
-    resetPasswordExpires: Date
+    isVerified: { type: Boolean, default: false } // New field for verification status
 });
 
 const User = mongoose.model('User', userSchema);
