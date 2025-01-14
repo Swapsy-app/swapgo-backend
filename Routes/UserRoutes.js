@@ -144,7 +144,7 @@ userRouter.post("/signin", async (req, res) => {
         const isPasswordValid = await bcrypt.compare(password, user.password);
         if (!isPasswordValid) return res.status(400).send("Invalid credentials");
 
-        const token = jwt.sign({ id: user._id }, "your-secret-key", { expiresIn: "1h" });
+        const token = jwt.sign({ id: user._id }, process.env.JWT_TOKEN, { expiresIn: "1h" });
 
         res.send({ message: "Login successful", token });
     } catch (err) {
@@ -246,7 +246,7 @@ userRouter.post("/forgot-password", async (req, res) => {
     }
 });
 
-userRouter.post("forget-pass/verify-otp", async (req, res) => {
+userRouter.post("/forget-pass/verify-otp", async (req, res) => {
     const { email, otp } = req.body;
     try {
         const user = await User.findOne({ email });
@@ -257,36 +257,42 @@ userRouter.post("forget-pass/verify-otp", async (req, res) => {
             return res.status(400).send("Invalid or expired OTP");
         }
 
+        // Clear OTP fields
         user.otp = null;
         user.otpExpires = null;
         await user.save();
 
-        res.send("OTP verified. You can now reset your password.");
+        // Generate a temporary token
+        const resetToken = jwt.sign({ email }, process.env.JWT_TOKEN, { expiresIn: "10m" }); // Token valid for 15 minutes
+        res.send({ message: "OTP verified. Use this token to reset your password.", resetToken });
     } catch (err) {
         console.error(err);
         res.status(500).send("Error verifying OTP");
     }
 });
 
-
-// Reset Password route
+// Reset Password using the temporary token
 userRouter.post("/reset-password", async (req, res) => {
-    const { email, newPassword, confirmPassword } = req.body;
-    try {
-        if (newPassword !== confirmPassword) {
-            return res.status(400).send("Passwords do not match");
-        }
+    const { resetToken, newPassword, confirmPassword } = req.body;
 
-        const user = await User.findOne({ email });
+    if (newPassword !== confirmPassword) {
+        return res.status(400).send("Passwords do not match");
+    }
+
+    try {
+        const decoded = jwt.verify(resetToken, process.env.JWT_TOKEN);
+        const user = await User.findOne({ email: decoded.email });
+
         if (!user) return res.status(400).send("User not found");
 
+        // Update the password
         user.password = await bcrypt.hash(newPassword, 10);
         await user.save();
 
         res.send("Password reset successful. You can now login.");
     } catch (err) {
         console.error(err);
-        res.status(500).send("Error resetting password");
+        res.status(400).send("Invalid or expired token");
     }
 });
 
