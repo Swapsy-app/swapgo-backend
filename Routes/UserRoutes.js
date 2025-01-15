@@ -8,8 +8,9 @@ const User = require("../Models/User");
 const { sendEmail } = require("../Modules/Email");
 
 // AES encryption key and initialization vector (IV)
-const encryptionKey = crypto.randomBytes(32); // 256-bit key
-const iv = crypto.randomBytes(16); // 128-bit IV
+const encryptionKey = Buffer.from(process.env.ENCRYPTION_KEY, "hex"); // 256-bit key
+const iv = Buffer.from(process.env.ENCRYPTION_IV, "hex"); // 128-bit IV
+
 
 // Function to encrypt data
 function encrypt(data) {
@@ -122,12 +123,28 @@ userRouter.post("/signup/otp/verify", async (req, res) => {
         user.isVerified = true; // Mark as verified
         await user.save();
 
-        res.send("Email verified. You can now login.");
+        // Generate access token (1 hour expiry)
+        const accessToken = jwt.sign({ id: user._id }, process.env.JWT_TOKEN, { expiresIn: "1h" });
+
+        // Generate long-lived refresh token (e.g., 10 years or "forever")
+        const refreshToken = jwt.sign({ id: user._id }, process.env.JWT_REFRESH_TOKEN, { expiresIn: "6m" });
+
+        // Save the refresh token to the database
+        user.refreshToken = refreshToken;
+        await user.save(); // Save the user document with the new refresh token
+
+        // Send the tokens to the client
+        res.send({
+            message: "Email verified. You are now logged in.",
+            accessToken,
+            refreshToken,
+        });
     } catch (err) {
         console.error("Error verifying OTP:", err);
         res.status(500).send("Error verifying OTP");
     }
 });
+
 
 
 // SignIn with password route
@@ -144,14 +161,52 @@ userRouter.post("/signin", async (req, res) => {
         const isPasswordValid = await bcrypt.compare(password, user.password);
         if (!isPasswordValid) return res.status(400).send("Invalid credentials");
 
-        const token = jwt.sign({ id: user._id }, process.env.JWT_TOKEN, { expiresIn: "1h" });
+        // Generate access token (1 hour expiry)
+        const accessToken = jwt.sign({ id: user._id }, process.env.JWT_TOKEN, { expiresIn: "1h" });
 
-        res.send({ message: "Login successful", token });
+        // Generate long-lived refresh token (e.g., 10 years or "forever")
+        const refreshToken = jwt.sign({ id: user._id }, process.env.JWT_REFRESH_TOKEN, { expiresIn: "6m" });
+
+        // Save the refresh token to the database
+        user.refreshToken = refreshToken;
+        await user.save(); // Save the user document with the new refresh token
+
+        // Send the tokens to the client
+        res.send({ message: "Login successful", accessToken, refreshToken });
     } catch (err) {
         console.error("Error signing in:", err);
         res.status(500).send("Error signing in");
     }
 });
+
+userRouter.post("/refresh", async (req, res) => {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+        return res.status(400).send("Refresh token is required");
+    }
+
+    try {
+        // Verify the refresh token
+        const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_TOKEN);
+
+        // Find the user based on the decoded user ID
+        const user = await User.findById(decoded.id);
+
+        if (!user || user.refreshToken !== refreshToken) {
+            return res.status(403).send("Invalid or expired refresh token");
+        }
+
+        // Issue a new access token
+        const accessToken = jwt.sign({ id: decoded.id }, process.env.JWT_TOKEN, { expiresIn: "1h" });
+
+        res.send({ accessToken });
+    } catch (err) {
+        console.error("Error refreshing token:", err);
+        res.status(403).send("Invalid refresh token or expired");
+    }
+});
+
 
 
 // Generate OTP for Sign In
@@ -224,6 +279,38 @@ userRouter.post("/resend-otp", async (req, res) => {
         res.status(500).send("Error resending OTP");
     }
 });
+
+// Logout route
+userRouter.post("/logout", async (req, res) => {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+        return res.status(400).send("Refresh token is required");
+    }
+
+    try {
+        // Verify the refresh token
+        const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_TOKEN);
+
+        // Find the user based on the decoded user ID
+        const user = await User.findById(decoded.id);
+
+        if (!user || user.refreshToken !== refreshToken) {
+            return res.status(403).send("Invalid or expired refresh token");
+        }
+
+        // Remove the refresh token from the user document to logout
+        user.refreshToken = null;
+        await user.save();
+
+        // Respond to indicate the user has been logged out
+        res.send("Logout successful");
+    } catch (err) {
+        console.error("Error logging out:", err);
+        res.status(500).send("Error logging out");
+    }
+});
+
 
 // Forgot Password route
 userRouter.post("/forgot-password", async (req, res) => {

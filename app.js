@@ -10,7 +10,6 @@ const userRouter=require("./Routes/UserRoutes");
 
 
 
-
 const app=express();
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs));
 
