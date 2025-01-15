@@ -149,7 +149,7 @@ userRouter.post("/signup/otp/verify", async (req, res) => {
         const accessToken = jwt.sign({ id: user._id }, process.env.JWT_TOKEN, { expiresIn: "1h" });
 
         // Generate long-lived refresh token (e.g., 10 years or "forever")
-        const refreshToken = jwt.sign({ id: user._id }, process.env.JWT_REFRESH_TOKEN, { expiresIn: "6m" });
+        const refreshToken = jwt.sign({ id: user._id }, process.env.JWT_REFRESH_TOKEN, { expiresIn: "180d" });
 
         // Save the refresh token to the database
         user.refreshToken = refreshToken;
@@ -187,7 +187,7 @@ userRouter.post("/signin", async (req, res) => {
         const accessToken = jwt.sign({ id: user._id }, process.env.JWT_TOKEN, { expiresIn: "1h" });
 
         // Generate long-lived refresh token (e.g., 10 years or "forever")
-        const refreshToken = jwt.sign({ id: user._id }, process.env.JWT_REFRESH_TOKEN, { expiresIn: "6m" });
+        const refreshToken = jwt.sign({ id: user._id }, process.env.JWT_REFRESH_TOKEN, { expiresIn: "180d" });
 
         // Save the refresh token to the database
         user.refreshToken = refreshToken;
@@ -266,19 +266,34 @@ userRouter.post("/signin/otp/verify", async (req, res) => {
 
         const decryptedOtp = decrypt(user.otp);
         if (decryptedOtp !== otp || user.otpExpires < Date.now()) {
-            return res.status(400).send("OTP expired");
+            return res.status(400).send("OTP expired or invalid");
         }
 
+        // Clear OTP fields after successful verification
         user.otp = null;
         user.otpExpires = null;
+
+        // Generate access token (valid for 1 hour)
+        const accessToken = jwt.sign({ id: user._id }, process.env.JWT_TOKEN, { expiresIn: "1h" });
+
+        // Generate refresh token (longer validity, e.g., 6 months)
+        const refreshToken = jwt.sign({ id: user._id }, process.env.JWT_REFRESH_TOKEN, { expiresIn: "180d" });
+
+        // Save the refresh token to the database
+        user.refreshToken = refreshToken;
         await user.save();
 
-        res.send("Login successful");
+        res.send({
+            message: "Login successful",
+            accessToken,
+            refreshToken,
+        });
     } catch (err) {
         console.error(err);
         res.status(500).send("Error verifying OTP");
     }
 });
+
 
 // Resend OTP route
 userRouter.post("/resend-otp", async (req, res) => {
