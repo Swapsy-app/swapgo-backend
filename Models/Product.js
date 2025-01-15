@@ -8,7 +8,7 @@ const productSchema = new mongoose.Schema({
     price: { type: Number, required: true },
     quantity: { type: Number, default: 1 },
     condition: { type: String, required: true },
-    weight: { type: Number },
+    weight: { type: Number, required: true },
     manufacturingCountry: { type: String },
     gstDetails: { type: String },
     location: { type: String },

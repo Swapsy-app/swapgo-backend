@@ -72,14 +72,35 @@ userRouter.post("/signup", async (req, res) => {
     try {
         const existingUser = await User.findOne({ email });
 
+        // If the user exists and their email is not verified, reset OTP and resend
         if (existingUser && !existingUser.isVerified) {
-            return res.status(400).send({ message: "Email already registered but not verified. Please verify your email." });
+            // Check if OTP hasn't expired yet
+            if (existingUser.otpExpires > Date.now()) {
+                // Expire the old OTP
+                existingUser.otp = null;
+                existingUser.otpExpires = null;
+                await existingUser.save();
+            }
+
+            // Generate a new OTP
+            const otp = crypto.randomInt(100000, 999999).toString();
+            const encryptedOtp = encrypt(otp);
+
+            // Update the user document with the new OTP and expiry time
+            existingUser.otp = encryptedOtp;
+            existingUser.otpExpires = Date.now() + 10 * 60 * 1000; // 10 minutes from now
+            await existingUser.save();
+
+            // Send the new OTP to the user's email
+            await sendEmail(email, "Your OTP for Verification", `Your OTP is: ${otp}`);
+            return res.status(400).send({ message: "Email already registered but not verified. A new OTP has been sent." });
         }
 
         if (existingUser) {
             return res.status(400).send({ message: "Email already registered. Please login." });
         }
 
+        // Create a new user if the email is not registered
         const hashedPassword = await bcrypt.hash(password, 10);
         const otp = crypto.randomInt(100000, 999999).toString();
         const encryptedOtp = encrypt(otp);
@@ -102,6 +123,7 @@ userRouter.post("/signup", async (req, res) => {
         res.status(500).send({ message: "Error creating user. Please try again later." });
     }
 });
+
 
 
 // Verify OTP route for SignUp
