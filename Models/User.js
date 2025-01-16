@@ -6,6 +6,10 @@ const userSchema = new mongoose.Schema({
     email: { type: String, unique: true },
     mobile: { type: String, unique: true },
     password: String,
+    username: { type: String, unique: true, match: /^[a-z0-9_]+$/ },
+    aboutMe: { type: String },
+    gender: { type: String, enum: ['Male', 'Female', 'Other'] },
+    occupation: { type: String},
     otp: String,
     otpExpires: Date,
     isVerified: { type: Boolean, default: false }, // New field for verification status

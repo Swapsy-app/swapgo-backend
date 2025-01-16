@@ -4,6 +4,7 @@ const { specs, swaggerUi } = require('./swagger');
 require("./DataBase/Connection");
 require("./Seeder/seedDatabase");
 const bodyParser = require("body-parser");
+const profileRoutes = require("./Routes/UserProfileRoutes");
 
 
 const userRouter=require("./Routes/UserRoutes");
@@ -22,6 +23,7 @@ app.use(bodyParser.json());
 
 //I'm Starting Code Here
 app.use(userRouter);
+app.use(profileRoutes);
 
 app.get("/",(req,res)=>{
     res.send("Welcome to my API");

@@ -28,6 +28,78 @@ function decrypt(data) {
     return decrypted;
 }
 
+// Function to create a unique username
+async function generateUsername(name) {
+    let username;
+
+    // Validate the input name
+    if (typeof name !== 'string' || name.trim() === '') {
+        // If name is missing or invalid, generate a random username directly
+        username = await generateUniqueRandomUsername();
+        return username;
+    }
+
+    // Normalize the name and remove non-alphanumeric characters
+    username = name.toLowerCase().replace(/[^a-z0-9_]/g, '').substring(0, 30);
+
+    // Check if the username is unique
+    let user = await User.findOne({ username });
+
+    if (!user) {
+        return username; // If the username is unique, return it
+    }
+
+    // If the username already exists, attempt to find a unique one by appending a counter
+    let counter = 1;
+    let maxRetries = 10; // Limit attempts to prevent infinite loops
+    while (user && counter <= maxRetries) {
+        username = name.toLowerCase().replace(/[^a-z0-9_]/g, '').substring(0, 30 - counter) + counter;
+        user = await User.findOne({ username });
+        counter++;
+    }
+
+    // If a unique username is not found after maxRetries, fallback to a random unique username
+    if (counter > maxRetries) {
+        username = await generateUniqueRandomUsername();
+    }
+
+    return username;
+}
+
+// Helper function to generate a random 30-character username and ensure uniqueness
+// Helper function to generate a unique random username starting with shorter lengths
+async function generateUniqueRandomUsername() {
+    const characters = 'abcdefghijklmnopqrstuvwxyz0123456789_';
+    let isUnique = false;
+    let randomUsername = '';
+
+    // Start with shorter usernames and progressively increase the length
+    for (let length = 1; length <= 30; length++) {
+        while (!isUnique) {
+            // Generate a random username of the current length
+            randomUsername = Array.from({ length }, () =>
+                characters.charAt(Math.floor(Math.random() * characters.length))
+            ).join('');
+
+            // Check if the username is unique
+            const user = await User.findOne({ username: randomUsername });
+            if (!user) {
+                isUnique = true; // The username is unique
+                break; // Exit the loop as we've found a unique username
+            }
+        }
+
+        // If a unique username is found, stop the process
+        if (isUnique) {
+            break;
+        }
+    }
+
+    return randomUsername;
+}
+
+
+
 /** 
 *@swagger
 * /signup:
@@ -102,6 +174,9 @@ userRouter.post("/signup", async (req, res) => {
             return res.status(400).send({ message: "Email already registered. Please login." });
         }
 
+        // Generate a unique username based on the name
+        const username = await generateUsername(name);
+
         // If no user exists, create a new user
         const hashedPassword = await bcrypt.hash(password, 10);
         const otp = crypto.randomInt(100000, 999999).toString();
@@ -113,7 +188,8 @@ userRouter.post("/signup", async (req, res) => {
             mobile,
             password: hashedPassword,
             otp: encryptedOtp,
-            otpExpires: Date.now() + 10 * 60 * 1000 // 10 minutes
+            otpExpires: Date.now() + 10 * 60 * 1000, // 10 minutes
+            username, // Add the generated username to the user object
         });
 
         await newUser.save();
