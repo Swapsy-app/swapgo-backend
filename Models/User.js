@@ -14,7 +14,9 @@ const userSchema = new mongoose.Schema({
     otpExpires: Date,
     isVerified: { type: Boolean, default: false }, // New field for verification status
     refreshToken: { type: String } // Store refresh token here
-});
+},
+{ timestamps: true } // Enable timestamps
+);
 
 const User = mongoose.model('User', userSchema);
 

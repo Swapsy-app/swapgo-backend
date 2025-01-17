@@ -28,8 +28,9 @@ const authenticateToken = (req, res, next) => {
 
 // Get user profile by ID
 router.get('/profile', authenticateToken, (req, res) => {
-    const { name, username, gender, occupation, aboutMe } = req.user;
-    res.json({ name, username, gender, occupation, aboutMe });
+    const { name, username, gender, occupation, aboutMe, createdAt } = req.user;
+    const createdAtIST = createdAt.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+    res.json({ name, username, gender, occupation, aboutMe, createdAt: createdAtIST });
 });
 
 // Update user profile by ID
