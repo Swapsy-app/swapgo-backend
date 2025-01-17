@@ -28,10 +28,42 @@ const authenticateToken = (req, res, next) => {
 
 // Get user profile by ID
 router.get('/profile', authenticateToken, (req, res) => {
-    const { name, username, gender, occupation, aboutMe, createdAt } = req.user;
+    const { name, username, gender, occupation, aboutMe, createdAt, avatar } = req.user;
     const createdAtIST = createdAt.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
-    res.json({ name, username, gender, occupation, aboutMe, createdAt: createdAtIST });
+    const avatarUrl = `http://localhost:3000/public/avatars/${avatar}`;
+    res.json({ name, username, gender, occupation, aboutMe, createdAt: createdAtIST, avatar: avatarUrl });
 });
+
+// Get all avatar image URLs
+router.get('/avatars', (req, res) => {
+    const allowedAvatars = ['user.png', 'bear.png', 'boy.png', 'bussiness-man_(1)', 'cat.png', 'gamer_(1).png', 'gamer.png', 'girl.png', 'man_(1).png', 'man_(2).png', 'man_(3).png', 'man_(4).png', 'man_(5).png', 'man_(6).png', 'man.png', 'meerkat.png', 'moslem-woman.png', 'panda.png', 'pensioner.png', 'profile_(1).png', 'profile.png', 'target.png', 'user_(1).png', 'woman.png', 'woman_(1).png', 'woman_(2).png', 'woman_(3).png', 'woman_(4).png', 'woman_(7).png', 'woman_(8).png'];
+
+    // Generate the URLs for each avatar image
+    const avatarUrls = allowedAvatars.map(avatar => `http://localhost:3000/public/avatars/${avatar}`);
+
+    res.json({ avatars: avatarUrls });
+});
+
+
+// update avatar route
+router.put('/profile/avatar', authenticateToken, async (req, res) => {
+    const { avatar } = req.body;
+
+    // Validate if the avatar is in the predefined list
+    const allowedAvatars = ['user.png', 'bear.png', 'boy.png', 'bussiness-man_(1)', 'cat.png', 'gamer_(1).png', 'gamer.png', 'girl.png', 'man_(1).png', 'man_(2).png', 'man_(3).png', 'man_(4).png', 'man_(5).png', 'man_(6).png', 'man.png', 'meerkat.png', 'moslem-woman.png', 'panda.png', 'pensioner.png', 'profile_(1).png', 'profile.png', 'target.png', 'user_(1).png', 'woman.png', 'woman_(1).png', 'woman_(2).png', 'woman_(3).png', 'woman_(4).png', 'woman_(7).png', 'woman_(8).png'];
+    if (!allowedAvatars.includes(avatar)) {
+        return res.status(400).json({ message: 'Invalid avatar selection' });
+    }
+
+    try {
+        req.user.avatar = avatar;
+        await req.user.save();
+        res.json({ message: 'Avatar updated successfully', avatar: `http://localhost:3000/public/avatars/${avatar}` });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
 
 // Update user profile by ID
 router.put('/profile', authenticateToken, async (req, res) => {
