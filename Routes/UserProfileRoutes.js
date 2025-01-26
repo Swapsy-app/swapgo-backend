@@ -28,7 +28,6 @@ const authenticateToken = (req, res, next) => {
 };
 
 // function to calculate time difference
-// Function to calculate time difference
 const getTimeDifference = (lastActive) => {
     const now = new Date();
     const diffMs = now - lastActive;
@@ -60,8 +59,9 @@ router.get('/profile', authenticateToken, (req, res) => {
     const createdAtIST = createdAt.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
     const avatarUrl = `http://localhost:3000/public/avatars/${avatar}`;
     const isOnline = isUserOnline(req.user.id);
-    const timeDifference = getTimeDifference(lastActive);
-    res.json({ name, username, gender, occupation, aboutMe, email, mobile, gst, createdAt: createdAtIST, avatar: avatarUrl, isOnline, lastActive: lastActive.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }), timeDifference  });
+    const timeDifferenceActive = getTimeDifference(lastActive);
+    const timeDifferenceOnline = getTimeDifference(createdAt);
+    res.json({ name, username, gender, occupation, aboutMe, email, mobile, gst, createdAt: createdAtIST, avatar: avatarUrl, isOnline, lastActive: lastActive.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }), timeDifferenceActive, timeDifferenceOnline  });
 });
 // Get all avatar image URLs
 router.get('/avatars', (req, res) => {
@@ -100,5 +100,7 @@ router.put('/profile', authenticateToken, async (req, res) => {
         res.status(500).json({ message: 'Server error' });
     }
 });
+
+
 
 module.exports = router;

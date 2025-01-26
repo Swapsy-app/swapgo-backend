@@ -6,9 +6,10 @@ require("./Seeder/seedDatabase");
 const bodyParser = require("body-parser");
 const profileRoutes = require("./Routes/UserProfileRoutes");
 const { setupWebSocket } = require('./Modules/websocket'); // Adjust the path as needed
-
-
+const searchRoutes = require('./Routes/UserSearchRoute');
+const communityRouter=require("./Routes/communityRoutes");
 const userRouter=require("./Routes/UserRoutes");
+const reportUserRoute=require("./Routes/ReportUserRoute")
 
 
 
@@ -26,6 +27,10 @@ app.use(bodyParser.json());
 //I'm Starting Code Here
 app.use(userRouter);
 app.use(profileRoutes);
+app.use(searchRoutes); 
+app.use(communityRouter); 
+app.use(reportUserRoute);
+
 app.use('/public', express.static('./public'));
 
 app.get("/",(req,res)=>{

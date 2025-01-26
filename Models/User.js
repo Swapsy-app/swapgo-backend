@@ -14,6 +14,7 @@ const userSchema = new mongoose.Schema({
     gst: {
         type: String,
         unique: true,
+        sparse: true,
         validate: {
             validator: function (value) {
                 if (!value) return true; // Allow blank values
@@ -25,6 +26,8 @@ const userSchema = new mongoose.Schema({
     },
     isOnline: { type: Boolean, default: false },
     lastActive: { type: Date, default: Date.now },
+    following: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    followers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     otp: String,
     otpExpires: Date,
     isVerified: { type: Boolean, default: false }, // New field for verification status
