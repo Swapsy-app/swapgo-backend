@@ -32,7 +32,6 @@ const getTimeDifference = (lastActive) => {
 };
 
 // Search users by username
-// Search users by username
 router.get('/search', async (req, res) => {
     const { username } = req.query;
     const page = parseInt(req.query.page) || 1; // Default to page 1 if not specified

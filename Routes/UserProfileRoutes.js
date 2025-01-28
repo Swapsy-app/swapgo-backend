@@ -3,29 +3,9 @@ const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const User = require('../Models/User'); // Adjust the path as needed
 const { isUserOnline } = require('../Modules/websocket'); // Adjust the path as needed
+const authenticateToken = require('../Modules/authMiddleware'); // Middleware to authenticate token and check if the user is verified
 const router = express.Router();
 
-// Middleware to verify JWT token and fetch user by ID
-const authenticateToken = (req, res, next) => {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
-    if (!token) return res.status(401).json({ message: 'Access token required' });
-
-    jwt.verify(token, process.env.JWT_TOKEN, async (err, user) => {
-        if (err) return res.status(403).json({ message: 'Invalid token' });
-
-        try {
-            const foundUser = await User.findById(user.id);
-            if (!foundUser) {
-                return res.status(404).json({ message: 'User not found' });
-            }
-            req.user = foundUser;
-            next();
-        } catch (error) {
-            res.status(500).json({ message: 'Server error' });
-        }
-    });
-};
 
 // function to calculate time difference
 const getTimeDifference = (lastActive) => {
@@ -37,7 +17,7 @@ const getTimeDifference = (lastActive) => {
     const diffDays = Math.floor(diffHours / 24);
     const diffMonths = Math.floor(diffDays / 30);
     const diffYears = Math.floor(diffMonths / 12);
-
+ 
     if (diffSecs < 60) {
         return `${diffSecs} seconds ago`;
     } else if (diffMins < 60) {

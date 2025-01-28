@@ -1,42 +1,16 @@
+// Routes/follow.js
 const express = require('express');
 const router = express.Router();
-const User = require('../Models/User'); // Adjust the path as needed
-const jwt = require('jsonwebtoken');
-
-// Middleware to authenticate token and check if the user is verified
-const authenticateToken = (req, res, next) => {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
-    if (!token) return res.status(401).json({ message: 'Access token required' });
-
-    jwt.verify(token, process.env.JWT_TOKEN, async (err, user) => {
-        if (err) return res.status(403).json({ message: 'Invalid token' });
-
-        try {
-            const foundUser = await User.findById(user.id);
-            if (!foundUser) {
-                return res.status(404).json({ message: 'User not found' });
-            }
-
-            // Check if the logged-in user is verified
-            if (!foundUser.isVerified) {
-                return res.status(403).json({ message: 'Account not verified' });
-            }
-
-            req.user = foundUser;
-            next();
-        } catch (error) {
-            res.status(500).json({ message: 'Server error' });
-        }
-    });
-};
+const Follow = require('../Models/community');
+const User = require('../Models/User');
+const authenticateToken = require('../Modules/authMiddleware');
 
 // Follow a user
 router.post('/follow/:id', authenticateToken, async (req, res) => {
-    const { id } = req.params; // ID of the user to follow
-    const currentUser = req.user; // The logged-in user
+    const { id } = req.params;
+    const currentUserId = req.user._id;
 
-    if (currentUser._id.toString() === id) {
+    if (currentUserId.toString() === id) {
         return res.status(400).json({ message: 'You cannot follow yourself' });
     }
 
@@ -47,22 +21,20 @@ router.post('/follow/:id', authenticateToken, async (req, res) => {
             return res.status(404).json({ message: 'User not found' });
         }
 
-        // Check if the target user is verified
         if (!userToFollow.isVerified) {
             return res.status(403).json({ message: 'Cannot follow an unverified user' });
         }
 
-        if (!currentUser.following.includes(id)) {
-            currentUser.following.push(id);
-            userToFollow.followers.push(currentUser._id);
+        const existingFollow = await Follow.findOne({ follower: currentUserId, following: id });
 
-            await currentUser.save();
-            await userToFollow.save();
-
-            res.json({ message: 'Followed successfully' });
-        } else {
-            res.status(400).json({ message: 'You are already following this user' });
+        if (existingFollow) {
+            return res.status(400).json({ message: 'You are already following this user' });
         }
+
+        const follow = new Follow({ follower: currentUserId, following: id });
+        await follow.save();
+
+        res.json({ message: 'Followed successfully' });
     } catch (error) {
         res.status(500).json({ message: 'Server error' });
     }
@@ -71,7 +43,7 @@ router.post('/follow/:id', authenticateToken, async (req, res) => {
 // Unfollow a user
 router.post('/unfollow/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
-    const currentUser = req.user;
+    const currentUserId = req.user._id;
 
     try {
         const userToUnfollow = await User.findById(id);
@@ -80,22 +52,17 @@ router.post('/unfollow/:id', authenticateToken, async (req, res) => {
             return res.status(404).json({ message: 'User not found' });
         }
 
-        // Check if the target user is verified
         if (!userToUnfollow.isVerified) {
             return res.status(403).json({ message: 'Cannot unfollow an unverified user' });
         }
 
-        if (currentUser.following.includes(id)) {
-            currentUser.following = currentUser.following.filter(userId => userId.toString() !== id);
-            userToUnfollow.followers = userToUnfollow.followers.filter(userId => userId.toString() !== currentUser._id.toString());
+        const follow = await Follow.findOneAndDelete({ follower: currentUserId, following: id });
 
-            await currentUser.save();
-            await userToUnfollow.save();
-
-            res.json({ message: 'Unfollowed successfully' });
-        } else {
-            res.status(400).json({ message: 'You are not following this user' });
+        if (!follow) {
+            return res.status(400).json({ message: 'You are not following this user' });
         }
+
+        res.json({ message: 'Unfollowed successfully' });
     } catch (error) {
         res.status(500).json({ message: 'Server error' });
     }
@@ -103,31 +70,29 @@ router.post('/unfollow/:id', authenticateToken, async (req, res) => {
 
 // Get followers of a specific user with pagination (public route)
 router.get('/followers/:id', async (req, res) => {
-    const { id } = req.params; // ID of the user whose followers you want to retrieve
-    const page = parseInt(req.query.page) || 1; // Default page is 1
-    const limit = parseInt(req.query.limit) || 20; // Default limit is 20
+    const { id } = req.params;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
 
     try {
-        const user = await User.findById(id).populate('followers', 'name aboutMe username avatar isVerified');
+        const user = await User.findById(id);
 
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
         }
 
-        // Include only verified followers in the response
-        const verifiedFollowers = user.followers.filter(follower => follower.isVerified);
+        const followers = await Follow.find({ following: id })
+            .populate('follower', 'name aboutMe username avatar isVerified')
+            .skip((page - 1) * limit)
+            .limit(limit);
 
-        // Calculate start and end index for pagination
-        const startIndex = (page - 1) * limit;
-        const endIndex = startIndex + limit;
-
-        const paginatedFollowers = verifiedFollowers.slice(startIndex, endIndex);
+        const totalFollowers = await Follow.countDocuments({ following: id });
 
         res.json({
-            followers: paginatedFollowers,
+            followers,
             currentPage: page,
-            totalPages: Math.ceil(verifiedFollowers.length / limit),
-            totalFollowers: verifiedFollowers.length,
+            totalPages: Math.ceil(totalFollowers / limit),
+            totalFollowers,
         });
     } catch (error) {
         res.status(500).json({ message: 'Server error' });
@@ -136,31 +101,29 @@ router.get('/followers/:id', async (req, res) => {
 
 // Get following of a specific user with pagination (public route)
 router.get('/following/:id', async (req, res) => {
-    const { id } = req.params; // ID of the user whose following list you want to retrieve
-    const page = parseInt(req.query.page) || 1; // Default page is 1
-    const limit = parseInt(req.query.limit) || 20; // Default limit is 20
+    const { id } = req.params;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
 
     try {
-        const user = await User.findById(id).populate('following', 'name aboutMe username avatar isVerified');
+        const user = await User.findById(id);
 
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
         }
 
-        // Include only verified following in the response
-        const verifiedFollowing = user.following.filter(following => following.isVerified);
+        const following = await Follow.find({ follower: id })
+            .populate('following', 'name aboutMe username avatar isVerified')
+            .skip((page - 1) * limit)
+            .limit(limit);
 
-        // Calculate start and end index for pagination
-        const startIndex = (page - 1) * limit;
-        const endIndex = startIndex + limit;
-
-        const paginatedFollowing = verifiedFollowing.slice(startIndex, endIndex);
+        const totalFollowing = await Follow.countDocuments({ follower: id });
 
         res.json({
-            following: paginatedFollowing,
+            following,
             currentPage: page,
-            totalPages: Math.ceil(verifiedFollowing.length / limit),
-            totalFollowing: verifiedFollowing.length,
+            totalPages: Math.ceil(totalFollowing / limit),
+            totalFollowing,
         });
     } catch (error) {
         res.status(500).json({ message: 'Server error' });
