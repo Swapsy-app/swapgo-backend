@@ -1,20 +1,29 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
-// Product Schema
-const productSchema = new mongoose.Schema({
+const productSchema = new mongoose.Schema(
+  {
+    category: { type: String, required: true },
+    images: [{ type: String, required: true }], // Array of image URLs
+    video: { type: String }, // Video URL
     title: { type: String, required: true },
     description: { type: String, required: true },
-    photos: [{ type: String, required: true }],
-    price: { type: Number, required: true },
-    quantity: { type: Number, default: 1 },
+    pickupAddress: { type: String, required: true },
     condition: { type: String, required: true },
+    manufacturingCountry: { type: String, required: true },
     weight: { type: Number, required: true },
-    manufacturingCountry: { type: String },
-    gstDetails: { type: String },
-    location: { type: String },
-    seller: { type: mongoose.Schema.Types.ObjectId, ref: 'Seller', required: true },
-    category: { type: mongoose.Schema.Types.ObjectId, ref: 'Category', required: true },
-    attributes: { type: Map, of: String }, // Store specific attributes dynamically
-});
+    brand: { type: String },
+    size: { type: String },
+    occasion: { type: String },
+    color: { type: String },
+    shape: { type: String },
+    fabric: { type: String },
+    price: { type: Number, required: true },
+    quantity: { type: Number, required: true },
+    shippingMethod: { type: String, required: true },
+    gstNumber: { type: String},
+    sellerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true }, // Reference to User model
+  },
+  { timestamps: true }
+);
 
-module.exports = mongoose.model('Product', productSchema);
+module.exports = mongoose.model("Product", productSchema);
