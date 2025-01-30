@@ -1,11 +1,21 @@
-// Import mongoose
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
-// Category Schema
-const categorySchema = new mongoose.Schema({
-    name: { type: String, required: true },
-    parent: { type: mongoose.Schema.Types.ObjectId, ref: 'Category', default: null },
-    attributes: [{ name: String, values: [String] }], // Dynamic attributes for categories
+const categorySchema = new mongoose.Schema(
+  {
+    productId: { type: mongoose.Schema.Types.ObjectId, ref: "Product", required: true }, // Link to Product
+    primaryCategory: { type: String, required: true }, // Must always be selected
+    secondaryCategory: { type: String }, // Optional
+    tertiaryCategory: { type: String }, // Optional
+  },
+  { timestamps: true }
+);
+
+// Ensure at least secondary or tertiary is provided
+categorySchema.pre("save", function (next) {
+  if (!this.secondaryCategory && !this.tertiaryCategory) {
+    return next(new Error("Either secondary or tertiary category must be provided"));
+  }
+  next();
 });
 
-module.exports = mongoose.model('Category', categorySchema);
+module.exports = mongoose.model("Category", categorySchema);
