@@ -10,7 +10,7 @@ const searchRoutes = require('./Routes/UserSearchRoute');
 const communityRouter=require("./Routes/communityRoutes");
 const userRouter=require("./Routes/UserRoutes");
 const reportUserRoute=require("./Routes/ReportUserRoute")
-
+const userAddressRoutes=require("./Routes/UserAddressRoutes");
 
 
 const app=express();
@@ -30,6 +30,7 @@ app.use(profileRoutes);
 app.use(searchRoutes); 
 app.use(communityRouter); 
 app.use(reportUserRoute);
+app.use(userAddressRoutes)
 
 app.use('/public', express.static('./public'));
 
