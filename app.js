@@ -11,16 +11,15 @@ const communityRouter=require("./Routes/communityRoutes");
 const userRouter=require("./Routes/UserRoutes");
 const reportUserRoute=require("./Routes/ReportUserRoute")
 const userAddressRoutes=require("./Routes/UserAddressRoutes");
+const productRoutes=require("./Routes/ProductRoutes/ProductRoutes")
 
 
 const app=express();
 const server = require('http').createServer(app);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs));
 
+app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
-app.use(bodyParser.json());
-
-
 
 
 
@@ -30,7 +29,8 @@ app.use(profileRoutes);
 app.use(searchRoutes); 
 app.use(communityRouter); 
 app.use(reportUserRoute);
-app.use(userAddressRoutes)
+app.use(userAddressRoutes);
+app.use(productRoutes);
 
 app.use('/public', express.static('./public'));
 
