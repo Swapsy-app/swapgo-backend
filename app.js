@@ -13,7 +13,7 @@ const reportUserRoute=require("./Routes/ReportUserRoute")
 const userAddressRoutes=require("./Routes/UserAddressRoutes");
 const productRoutes=require("./Routes/ProductRoutes/ProductRoutes")
 const productCardRoutes=require("./Routes/ProductRoutes/ProductCardFetch")
-
+const productPageFetch=require("./Routes/ProductRoutes/ProductPageFetchRoutes")
 
 const app=express();
 const server = require('http').createServer(app);
@@ -33,6 +33,7 @@ app.use(reportUserRoute);
 app.use(userAddressRoutes);
 app.use(productRoutes);
 app.use(productCardRoutes);
+app.use(productPageFetch);
 
 app.use('/public', express.static('./public'));
 
