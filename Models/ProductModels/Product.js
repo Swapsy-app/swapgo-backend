@@ -26,8 +26,8 @@ const productSchema = new mongoose.Schema(
     sellerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true }, // get from user profile jwt token
     size: {
       attributes: [{ 
-        name: { type: String, required: true }, 
-        value: { type: String, required: true }
+        name: { type: String }, 
+        value: { type: String}
       }],
       freeSize: { type: Boolean, default: false },
       sizeString: { type: String }
@@ -54,18 +54,22 @@ const productSchema = new mongoose.Schema(
 );
 
 // Custom validation to ensure only one size field is selected
-productSchema.pre('save', function(next) {
-  const size = this.size;
+productSchema.pre("save", function (next) {
+  // Ensure size exists before accessing its properties
+  if (!this.size) {
+    this.size = {};  // ✅ Prevents undefined errors
+  }
 
-  // Count how many of the size-related fields are set
-  const selectedFields = [size.attributes.length, size.freeSize, size.sizeString].filter(field => field);
+  const { attributes = [], freeSize = false, sizeString = "" } = this.size; // ✅ Safe defaults
 
+  const selectedFields = [attributes.length, freeSize, sizeString].filter(field => field);
   if (selectedFields.length > 1) {
-    return next(new Error('Only one of the size fields (attributes, freeSize, or sizeString) can be selected.'));
+    return next(new Error("Only one of the size fields (attributes, freeSize, or sizeString) can be selected."));
   }
 
   next();
 });
+
 
 // Ensure at least secondary or tertiary category is provided
 productSchema.pre("save", function (next) {

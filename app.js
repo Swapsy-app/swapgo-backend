@@ -12,6 +12,7 @@ const userRouter=require("./Routes/UserRoutes");
 const reportUserRoute=require("./Routes/ReportUserRoute")
 const userAddressRoutes=require("./Routes/UserAddressRoutes");
 const productRoutes=require("./Routes/ProductRoutes/ProductRoutes")
+const productCardRoutes=require("./Routes/ProductRoutes/ProductCardFetch")
 
 
 const app=express();
@@ -31,6 +32,7 @@ app.use(communityRouter);
 app.use(reportUserRoute);
 app.use(userAddressRoutes);
 app.use(productRoutes);
+app.use(productCardRoutes);
 
 app.use('/public', express.static('./public'));
 
