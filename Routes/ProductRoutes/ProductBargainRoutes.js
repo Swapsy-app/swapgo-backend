@@ -206,7 +206,7 @@ router.get("/seller-bargain-fetch/product/:productId", async (req, res) => {
   }
 });
 
-
+// show your offer in profile page
 router.get("/buyer-bargain-fetch/user/:userId", authenticateToken, async (req, res) => {
   try {
     const { userId } = req.params;
@@ -267,6 +267,82 @@ router.get("/buyer-bargain-fetch/user/:userId", authenticateToken, async (req, r
       currentPage: parseInt(page),
       totalBargains,
       bargains: formattedBargains
+    });
+  } catch (error) {
+    console.error("Error:", error.message);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+//get all bargain received by a seller
+router.get("/seller-bargains/:sellerId", authenticateToken, async (req, res) => {
+  try {
+    const { sellerId } = req.params;
+    const { status, page = 1 } = req.query;
+    const limit = 10;
+
+    if (req.user.id !== sellerId) {
+      return res.status(403).json({ message: "Unauthorized access" });
+    }
+
+    let filter = { sellerId };
+
+    // Apply status filter if provided
+    if (status && ["pending", "accepted"].includes(status)) {
+      filter.status = status;
+    }
+
+    const totalBargains = await Bargain.countDocuments(filter);
+
+    const bargains = await Bargain.find(filter)
+      .populate({
+        path: "productId",
+        select: "title images price",
+      })
+      .populate({
+        path: "buyerId",
+        select: "username avatar",
+      })
+      .sort({
+        status: 1, // Sort pending first (since "pending" < "accepted" alphabetically)
+        createdAt: -1, // Newest first within each status
+      })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .exec();
+
+    // Format response
+    const formattedBargains = bargains.map((bargain) => ({
+      _id: bargain._id,
+      status: bargain.status,
+      offeredPrice: bargain.offeredPrice,
+      sellerReceives: bargain.sellerReceives,
+      message: bargain.message,
+      product: {
+        _id: bargain.productId._id,
+        title: bargain.productId.title,
+        image: bargain.productId.images?.[0] || null,
+        mrp: bargain.productId.price?.mrp || null,
+        cashPrice: bargain.productId.price?.cash?.enteredAmount || null,
+        coinPrice: bargain.productId.price?.coin?.enteredAmount || null,
+        mixPrice: {
+          cash: bargain.productId.price?.mix?.enteredCash || null,
+          coin: bargain.productId.price?.mix?.enteredCoin || null
+        }
+      },
+      buyer: {
+        _id: bargain.buyerId._id,
+        username: bargain.buyerId.username,
+        avatar: bargain.buyerId.avatar,
+      },
+      createdAt: bargain.createdAt,
+    }));
+
+    res.status(200).json({
+      totalPages: Math.ceil(totalBargains / limit),
+      currentPage: parseInt(page),
+      totalBargains,
+      bargains: formattedBargains,
     });
   } catch (error) {
     console.error("Error:", error.message);
