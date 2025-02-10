@@ -6,6 +6,9 @@ const jwt = require("jsonwebtoken");
 const userRouter = express.Router();
 const User = require("../Models/User");
 const { sendEmail } = require("../Modules/Email");
+const authenticateToken = require("../Modules/authMiddleware");
+const BlacklistedToken = require("../Models/blacklistedAccessToken"); // Model for blacklisted tokens
+
 
 // AES encryption key and initialization vector (IV)
 const encryptionKey = Buffer.from(process.env.ENCRYPTION_KEY, "hex"); // 256-bit key
@@ -394,31 +397,52 @@ userRouter.post("/resend-otp", async (req, res) => {
     }
 });
 
-// Logout route
-userRouter.post("/logout", async (req, res) => {
-    const { refreshToken } = req.body;
+userRouter.get("/check-login-status", authenticateToken, (req, res) => {
+    const { isVerified, email, username, _id } = req.user;
 
-    if (!refreshToken) {
-        return res.status(400).send("Refresh token is required");
+    if (!isVerified) {
+        return res.status(403).send({ message: "User is not verified. Please verify your email." });
+    }
+
+    res.send({
+        message: "User is logged in and verified",
+        user: {
+            id: _id,
+            email,
+            username,
+            isVerified
+        }
+    });
+});
+
+
+//logout
+userRouter.post("/logout", async (req, res) => {
+    const { refreshToken, accessToken } = req.body;
+
+    if (!refreshToken || !accessToken) {
+        return res.status(400).send("Refresh token and access token are required");
     }
 
     try {
         // Verify the refresh token
         const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_TOKEN);
 
-        // Find the user based on the decoded user ID
+        // Find the user
         const user = await User.findById(decoded.id);
 
         if (!user || user.refreshToken !== refreshToken) {
             return res.status(403).send("Invalid or expired refresh token");
         }
 
-        // Remove the refresh token from the user document to logout
+        // Remove refresh token from the user document
         user.refreshToken = null;
         await user.save();
 
-        // Respond to indicate the user has been logged out
-        res.send("Logout successful");
+        // Blacklist the access token
+        await BlacklistedToken.create({ token: accessToken });
+
+        res.send("Logout successful. Access token is now blacklisted.");
     } catch (err) {
         console.error("Error logging out:", err);
         res.status(500).send("Error logging out");
