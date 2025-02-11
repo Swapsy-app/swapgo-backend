@@ -92,6 +92,34 @@ router.put("/bargain-update/:productId", authenticateToken, async (req, res) => 
   }
 });
 
+// Delete a bargain (Only Buyer can delete)
+router.delete("/bargain-delete/:bargainId", authenticateToken, async (req, res) => {
+  try {
+    const { bargainId } = req.params;
+    const userId = req.user.id;
+
+    // Find the bargain
+    const bargain = await Bargain.findById(bargainId);
+    if (!bargain) {
+      return res.status(404).json({ message: "Bargain not found" });
+    }
+
+    // Ensure only the buyer can delete the bargain
+    if (bargain.buyerId.toString() !== userId) {
+      return res.status(403).json({ message: "Unauthorized: Only the buyer can delete this bargain." });
+    }
+
+    // Delete the bargain
+    await Bargain.findByIdAndDelete(bargainId);
+
+    return res.status(200).json({ message: "Bargain deleted successfully" });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+
+
 // Get all bargains for a product (seller/public) for product page with pagination and sorting
 router.get("/seller-bargain-fetch/product/:productId", async (req, res) => {
   try {
