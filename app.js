@@ -27,16 +27,16 @@ app.use(express.json());
 
 
 //I'm Starting Code Here
-app.use(userRouter);
-app.use(profileRoutes);
-app.use(searchRoutes); 
-app.use(communityRouter); 
-app.use(reportUserRoute);
-app.use(userAddressRoutes);
-app.use(productRoutes);
-app.use(productCardRoutes);
-app.use(productPageFetch);
-app.use(productBargain);
+app.use("/api/auth",userRouter);
+app.use("/api/userprofile",profileRoutes);
+app.use("/api/searchuser",searchRoutes); 
+app.use("/api/community",communityRouter); 
+app.use("/api/reportuser",reportUserRoute);
+app.use("/api/useraddress",userAddressRoutes);
+app.use("/api/productsell",productRoutes);
+app.use("/api/productcard",productCardRoutes);
+app.use("/api/productpage",productPageFetch);
+app.use("/api/bargain",productBargain);
 app.use("/api/comments", productComment);
 
 app.use('/public', express.static('./public'));

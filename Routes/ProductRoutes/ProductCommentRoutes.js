@@ -3,9 +3,10 @@ const router = express.Router();
 const Comment = require("../../Models/ProductModels/comments");
 const Product = require("../../Models/ProductModels/Product");
 const User = require("../../Models/User");
+const authenticateToken = require("../../Modules/authMiddleware"); // Import authentication middleware
 
-// 1️⃣ Add a comment
-router.post("/:productId", async (req, res) => {
+// 1️⃣ Add a comment (Only authenticated users)
+router.post("/:productId", authenticateToken, async (req, res) => {
   try {
     const { productId } = req.params;
     const { commentText, taggedUsernames } = req.body;
@@ -21,7 +22,7 @@ router.post("/:productId", async (req, res) => {
       taggedUsers = await User.find({ username: { $in: taggedUsernames } }).select("_id");
     }
 
-    // If no tagged users, tag the seller by default
+    // If no tagged users, tag the seller by default (if commenter is not the seller)
     if (taggedUsers.length === 0 && String(product.sellerId) !== userId) {
       taggedUsers.push(product.sellerId);
     }
@@ -42,8 +43,8 @@ router.post("/:productId", async (req, res) => {
   }
 });
 
-// 2️⃣ Add a reply
-router.post("/:commentId/reply", async (req, res) => {
+// 2️⃣ Add a reply (Only authenticated users)
+router.post("/:commentId/reply", authenticateToken, async (req, res) => {
   try {
     const { commentId } = req.params;
     const { replyText, taggedUsernames } = req.body;
@@ -59,7 +60,7 @@ router.post("/:commentId/reply", async (req, res) => {
       taggedUsers = await User.find({ username: { $in: taggedUsernames } }).select("_id");
     }
 
-    // If no tagged users, tag the original commenter by default
+    // If no tagged users, tag the original commenter by default (if reply is not by the original commenter)
     if (taggedUsers.length === 0 && String(comment.userId) !== userId) {
       taggedUsers.push(comment.userId);
     }
@@ -82,7 +83,7 @@ router.post("/:commentId/reply", async (req, res) => {
   }
 });
 
-// 3️⃣ Get all comments for a product
+// 3️⃣ Get all comments for a product (No authentication required)
 router.get("/:productId", async (req, res) => {
   try {
     const { productId } = req.params;
@@ -101,7 +102,7 @@ router.get("/:productId", async (req, res) => {
   }
 });
 
-// 4️⃣ Search users by username
+// 4️⃣ Search users by username (No authentication required)
 router.get("/users/search", async (req, res) => {
   try {
     const { query } = req.query;
