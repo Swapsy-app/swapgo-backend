@@ -398,6 +398,7 @@ userRouter.post("/resend-otp", async (req, res) => {
     }
 });
 
+//check if user is logged in or not
 userRouter.get("/check-login-status", authenticateToken, (req, res) => {
     const { isVerified, email, username, _id } = req.user;
 
@@ -471,6 +472,7 @@ userRouter.post("/forgot-password", async (req, res) => {
     }
 });
 
+//verify forget otp
 userRouter.post("/forget-pass/verify-otp", async (req, res) => {
     const { email, otp } = req.body;
     try {
