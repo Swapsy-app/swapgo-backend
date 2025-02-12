@@ -416,37 +416,36 @@ userRouter.get("/check-login-status", authenticateToken, (req, res) => {
     });
 });
 
-
 //logout
-userRouter.post("/logout", async (req, res) => {
-    const { refreshToken, accessToken } = req.body;
-
-    if (!refreshToken || !accessToken) {
-        return res.status(400).send("Refresh token and access token are required");
-    }
-
+userRouter.post("/logout", authenticateToken, async (req, res) => {
     try {
-        // Verify the refresh token
-        const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_TOKEN);
+        const userId = req.user.id; // Extracted from access token via authMiddleware
 
-        // Find the user
-        const user = await User.findById(decoded.id);
+        // Extract token from Authorization header
+        const authHeader = req.headers["authorization"];
+        const token = authHeader && authHeader.split(" ")[1];
 
-        if (!user || user.refreshToken !== refreshToken) {
-            return res.status(403).send("Invalid or expired refresh token");
+        if (!token) {
+            return res.status(400).json({ message: "Token not found" });
         }
+
+        // Find user by ID
+        const user = await User.findById(userId);
+        if (!user || !user.refreshToken) {
+            return res.status(403).json({ message: "User not found or not logged in" });
+        }
+
+        // Blacklist the access token
+        await BlacklistedToken.create({ token });
 
         // Remove refresh token from the user document
         user.refreshToken = null;
         await user.save();
 
-        // Blacklist the access token
-        await BlacklistedToken.create({ token: accessToken });
-
-        res.send("Logout successful. Access token is now blacklisted.");
+        res.json({ message: "Logout successful. Access token is now blacklisted." });
     } catch (err) {
         console.error("Error logging out:", err);
-        res.status(500).send("Error logging out");
+        res.status(500).json({ message: "Error logging out" });
     }
 });
 

@@ -3,18 +3,17 @@ const express=require("express");
 const { specs, swaggerUi } = require('./swagger');
 require("./DataBase/Connection");
 require("./Seeder/seedDatabase");
-const bodyParser = require("body-parser");
 const profileRoutes = require("./Routes/UserProfileRoutes");
 const { setupWebSocket } = require('./Modules/websocket'); // Adjust the path as needed
 const searchRoutes = require('./Routes/UserSearchRoute');
 const communityRouter=require("./Routes/communityRoutes");
 const userRouter=require("./Routes/UserRoutes");
-const reportUserRoute=require("./Routes/ReportUserRoute")
+const reportUserRoute=require("./Routes/ReportUserRoute");
 const userAddressRoutes=require("./Routes/UserAddressRoutes");
-const productRoutes=require("./Routes/ProductRoutes/ProductRoutes")
-const productCardRoutes=require("./Routes/ProductRoutes/ProductCardFetch")
-const productPageFetch=require("./Routes/ProductRoutes/ProductPageFetchRoutes")
-const productBargain=require("./Routes/ProductRoutes/ProductBargainRoutes")
+const productRoutes=require("./Routes/ProductRoutes/ProductRoutes");
+const productCardRoutes=require("./Routes/ProductRoutes/ProductCardFetch");
+const productPageFetch=require("./Routes/ProductRoutes/ProductPageFetchRoutes");
+const productBargain=require("./Routes/ProductRoutes/ProductBargainRoutes");
 const productComment = require("./Routes/ProductRoutes/ProductCommentRoutes");
 
 const app=express();
