@@ -24,9 +24,9 @@ const getTimeDifference = (lastActive) => {
     return `${diffYears} years ago`;
 };
 
-// Search users by username
+// Search users by username with optional "@" prefix
 router.get('/search', async (req, res) => {
-    const { username } = req.query;
+    let { username } = req.query;
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
 
@@ -36,8 +36,14 @@ router.get('/search', async (req, res) => {
 
     try {
         const skip = (page - 1) * limit;
+
+        // Remove "@" if present at the beginning
+        if (username.startsWith('@')) {
+            username = username.substring(1); // Remove "@" symbol
+        }
+
         const users = await User.find(
-            { username: { $regex: username, $options: 'i' }, isVerified: true },
+            { username: { $regex: `^${username}`, $options: 'i' }, isVerified: true }, // Search for usernames that start with input
             'username avatar name'
         )
             .skip(skip)
@@ -53,7 +59,7 @@ router.get('/search', async (req, res) => {
             avatarUrl: `http://localhost:3000/public/avatars/${user.avatar}`
         }));
 
-        const totalUsers = await User.countDocuments({ username: { $regex: username, $options: 'i' }, isVerified: true });
+        const totalUsers = await User.countDocuments({ username: { $regex: `^${username}`, $options: 'i' }, isVerified: true });
         const totalPages = Math.ceil(totalUsers / limit);
 
         res.json({ users: userResults, currentPage: page, totalPages, totalUsers });
@@ -61,6 +67,7 @@ router.get('/search', async (req, res) => {
         res.status(500).json({ message: 'Server error' });
     }
 });
+
 
 // Get user details by username
 router.get('/profile/:username', async (req, res) => {
