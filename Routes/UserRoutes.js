@@ -101,8 +101,6 @@ async function generateUniqueRandomUsername() {
     return randomUsername;
 }
 
-
-
 /** 
 *@swagger
 * /signup:

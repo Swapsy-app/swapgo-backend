@@ -84,6 +84,9 @@ router.post("/add-product", authenticateToken, async (req, res) => {
       productData.pickupAddress = defaultAddress._id; // Ensure ObjectId is stored
     }
 
+  // Ensure status is set to "available" if not provided
+  productData.status = productData.status || "available";
+
     const product = new Product(productData);
     await product.save();
     
@@ -105,6 +108,34 @@ router.put("/edit-product/:id", authenticateToken, async (req, res) => {
     res.json({ success: true, product });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+// ----------------------------------------------------------------
+// 4. Change product status to "unavailable" or "Availaible"
+// ----------------------------------------------------------------
+router.patch("/product/:id/toggle-availability", authenticateToken, async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id);
+    if (!product) {
+      return res.status(404).json({ success: false, message: "Product not found" });
+    }
+
+    if (product.sellerId.toString() !== req.user.id) {
+      return res.status(403).json({ success: false, message: "Unauthorized" });
+    }
+
+    // Toggle status
+    product.status = product.status === "available" ? "unavailable" : "available";
+    
+    await product.save();
+    res.json({ 
+      success: true, 
+      message: `Product status set to ${product.status}`, 
+      product 
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Server error", error: error.message });
   }
 });
 

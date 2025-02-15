@@ -48,7 +48,24 @@ const productSchema = new mongoose.Schema(
         sellerReceivesCash: { type: Number },
         sellerReceivesCoin: { type: Number },
       }
-    }
+    },
+   status: {
+  type: String,
+  enum: [
+    "available",
+    "sold",
+    "unavailable",
+    "orderReceived",
+    "shipped",
+    "issues",
+    "cancelled",
+    "draft",
+    "underReview"
+  ],
+  required: true,
+  default: "available"
+}
+
   },
   { timestamps: true }
 );

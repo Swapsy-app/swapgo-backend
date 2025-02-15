@@ -11,10 +11,11 @@ router.get("/products-card-fetch", async (req, res) => {
     const limit = 15;
     const skip = (page - 1) * limit;
 
-    const totalProducts = await Product.countDocuments();
+    // Filter out unavailable products
+    const totalProducts = await Product.countDocuments({ status: { $ne: "unavailable" } });
     const totalPages = Math.ceil(totalProducts / limit);
 
-    const products = await Product.find()
+    const products = await Product.find({ status: { $ne: "unavailable" } }) // Exclude unavailable products
       .select("images brand title size price sellerId")
       .populate({
         path: "sellerId",
@@ -58,6 +59,7 @@ router.get("/products-card-fetch", async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 });
+
 
 // Fetch product card by user ID with pagination (latest products first)
 router.get("/products-cards/user/:userId", async (req, res) => {
