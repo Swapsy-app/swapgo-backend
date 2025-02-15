@@ -407,5 +407,19 @@ router.patch("/accept-bargain/:bargainId", authenticateToken, async (req, res) =
   }
 });
 
+// Route to get the count of bargain offers for a product
+router.get("/bargain/count/:productId", async (req, res) => {
+  try {
+    const { productId } = req.params;
+    
+    const bargainCount = await Bargain.countDocuments({ productId });
+    
+    return res.status(200).json({ productId, bargainCount });
+  } catch (error) {
+    console.error("Error fetching bargain count:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
 
 module.exports = router;

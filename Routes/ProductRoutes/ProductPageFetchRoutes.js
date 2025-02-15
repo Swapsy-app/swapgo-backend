@@ -26,7 +26,11 @@ router.get("/product-details/:productId", async (req, res) => {
     console.log("Buyer ID (from token or null):", buyerId || "Guest User");
 
     // Fetch product details excluding some fields
-    const product = await Product.findById(productId)
+    const product = await Product.findByIdAndUpdate(
+      productId,
+      { $inc: { views: 1 } }, // Increment view count
+      { new: true } // Return updated document
+    )
       .select("-gstNumber -pickupAddress -quantity -shippingMethod") // Exclude unnecessary fields
       .populate({
         path: "sellerId",
@@ -95,6 +99,24 @@ router.get("/product-details/:productId", async (req, res) => {
 
   } catch (error) {
     console.error("Error fetching product details and price:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Route to fetch product view count
+router.get("/product-views/:productId", async (req, res) => {
+  try {
+    const { productId } = req.params;
+
+    const product = await Product.findById(productId).select("views");
+
+    if (!product) {
+      return res.status(404).json({ success: false, message: "Product not found" });
+    }
+
+    res.json({ success: true, productId, views: product.views });
+  } catch (error) {
+    console.error("Error fetching product views:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 });

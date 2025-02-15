@@ -81,6 +81,4 @@ router.put('/profile', authenticateToken, async (req, res) => {
     }
 });
 
-
-
 module.exports = router;

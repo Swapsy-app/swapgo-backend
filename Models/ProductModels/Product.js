@@ -64,8 +64,8 @@ const productSchema = new mongoose.Schema(
   ],
   required: true,
   default: "available"
-}
-
+},
+views: { type: Number, default: 0 }
   },
   { timestamps: true }
 );

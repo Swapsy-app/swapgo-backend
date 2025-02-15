@@ -15,6 +15,7 @@ const productCardRoutes=require("./Routes/ProductRoutes/ProductCardFetch");
 const productPageFetch=require("./Routes/ProductRoutes/ProductPageFetchRoutes");
 const productBargain=require("./Routes/ProductRoutes/ProductBargainRoutes");
 const productComment = require("./Routes/ProductRoutes/ProductCommentRoutes");
+const ProductWishlist = require("./Routes/ProductRoutes/ProductWishlist")
 
 const app=express();
 const server = require('http').createServer(app);
@@ -37,6 +38,7 @@ app.use("/api/productcard",productCardRoutes);
 app.use("/api/productpage",productPageFetch);
 app.use("/api/bargain",productBargain);
 app.use("/api/comments", productComment);
+app.use("/api/wishlist", ProductWishlist);
 
 app.use('/public', express.static('./public'));
 
