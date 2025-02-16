@@ -48,58 +48,107 @@ router.post("/remove-wishlist", authenticateToken, async (req, res) => {
   }
 });
 
-// Get user's wishlist with sorting and filtering
-router.get("/wishlist-fetch", authenticateToken, async (req, res) => {
+// Fetch wishlisted products with sorting, filtering, and pagination
+router.get("/fetch-wishlist", authenticateToken, async (req, res) => {
     try {
-      const userId = req.user.id;
-  
-      // Sorting and filtering options from query params
-      const { sort, primaryCategory, secondaryCategory, tertiaryCategory, condition, status } = req.query;
-  
-      // Fetch wishlist items for the user
-      let wishlist = await WishlistItem.find({ userId }).populate({
-        path: "productId",
-        model: Product, // ✅ Explicitly specify the Product model
-        select: "images title brand size price status condition category createdAt updatedAt",
-      });
-  
-      // Filter out null values (cases where productId was removed)
-      wishlist = wishlist.filter(item => item.productId);
-  
-      // Apply filters manually
-      if (primaryCategory) wishlist = wishlist.filter(item => item.productId.category.primaryCategory === primaryCategory);
-      if (secondaryCategory) wishlist = wishlist.filter(item => item.productId.category.secondaryCategory === secondaryCategory);
-      if (tertiaryCategory) wishlist = wishlist.filter(item => item.productId.category.tertiaryCategory === tertiaryCategory);
-      if (condition) wishlist = wishlist.filter(item => item.productId.condition === condition);
-      if (status) wishlist = wishlist.filter(item => item.productId.status === status);
-  
-      // Sorting logic
-      if (sort === "newest") wishlist.sort((a, b) => b.productId.createdAt - a.productId.createdAt);
-      if (sort === "oldest") wishlist.sort((a, b) => a.productId.createdAt - b.productId.createdAt);
-      if (sort === "lowToHigh") wishlist.sort((a, b) => a.productId.price.mrp - b.productId.price.mrp);
-      if (sort === "highToLow") wishlist.sort((a, b) => b.productId.price.mrp - a.productId.price.mrp);
-  
-      // Transform response to return structured data
-      const transformedWishlist = wishlist.map((item) => ({
-        productId: item.productId._id,
-        title: item.productId.title,
-        brand: item.productId.brand,
-        size: item.productId.size,
-        price: item.productId.price,
-        status: item.productId.status,
-        condition: item.productId.condition,
-        category: item.productId.category,
-        createdAt: item.productId.createdAt,
-        updatedAt: item.productId.updatedAt,
-        image: item.productId.images.length > 0 ? item.productId.images[0] : null,
-      }));
-  
-      res.json({ success: true, wishlist: transformedWishlist });
-    } catch (error) {
-      res.status(500).json({ message: error.message });
-    }
-  });
+        const userId = req.user.id;
+        let { page = 1, sort, status, condition, category, priceType, minPrice, maxPrice } = req.query;
 
+        page = parseInt(page) || 1;
+        const limit = 10;
+        const skip = (page - 1) * limit;
+
+        // Fetch wishlisted product IDs sorted by latest wishlisted first
+        const wishlistItems = await WishlistItem.find({ userId }).sort({ createdAt: -1 });
+        const productIdToWishlistMap = {};
+        wishlistItems.forEach(item => {
+            productIdToWishlistMap[item.productId.toString()] = item._id; // Map productId to wishlistId
+        });
+
+        const productIds = wishlistItems.map(item => item.productId.toString()); // Maintain wishlisted order
+
+        if (productIds.length === 0) {
+            return res.json({ success: true, products: [], total: 0, page });
+        }
+
+        let filter = { _id: { $in: productIds } };
+
+        // Apply filters
+        if (status) filter.status = status;
+        if (condition) filter.condition = condition;
+        if (category) {
+            filter.$or = [
+                { "category.primaryCategory": category },
+                { "category.secondaryCategory": category },
+                { "category.tertiaryCategory": category }
+            ];
+        }
+
+        // Price filter
+        if (priceType && ["cash", "coin", "mix"].includes(priceType)) {
+            let priceField = `price.${priceType}.enteredAmount`;
+            filter[priceField] = { $gte: minPrice || 0 };
+            if (maxPrice && maxPrice < 50000) {
+                filter[priceField].$lte = maxPrice;
+            }
+        }
+
+        // Sorting logic
+        let sortOptions = {};
+        if (sort === "newest") {
+            sortOptions.createdAt = -1; // Sort by latest posted products
+        } else if (sort === "oldest") {
+            sortOptions.createdAt = 1; // Sort by oldest posted products
+        }
+
+        // Fetch products with selected fields
+        let products = await Product.find(filter)
+            .sort(sortOptions)
+            .skip(skip)
+            .limit(limit)
+            .select("images title brand size price sellerId status createdAt");
+
+        // Fetch seller details (user avatar and username)
+        const sellerIds = [...new Set(products.map(p => p.sellerId))]; // Get unique seller IDs
+        const sellers = await User.find({ _id: { $in: sellerIds } }).select("avatar username");
+
+        // Map seller details to products
+        const sellerMap = {};
+        sellers.forEach(seller => {
+            sellerMap[seller._id.toString()] = { avatar: seller.avatar, username: seller.username };
+        });
+
+        // If no explicit sorting is applied, maintain wishlist order
+        if (!sort) {
+            products = productIds
+                .map(productId => products.find(p => p._id.toString() === productId))
+                .filter(product => product !== undefined); // Remove any undefined entries
+        }
+
+        const finalProducts = products.map(product => ({
+            productId: product._id,
+            wishlistId: productIdToWishlistMap[product._id.toString()], // Get wishlist ID from map
+            image: product.images[0], // First image only
+            title: product.title,
+            brand: product.brand,
+            size: product.size,
+            price: product.price,
+            status: product.status, // Include status
+            seller: sellerMap[product.sellerId.toString()] || null, // Attach seller details
+            createdAt: product.createdAt
+        }));
+
+        res.json({
+            success: true,
+            products: finalProducts,
+            total: await Product.countDocuments(filter),
+            page,
+            totalPages: Math.ceil(await Product.countDocuments(filter) / limit)
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
 
   // Get wishlist count for a specific product
 router.get("/wishlist-count/:productId", async (req, res) => {
