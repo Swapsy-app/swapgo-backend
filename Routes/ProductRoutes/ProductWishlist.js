@@ -52,7 +52,7 @@ router.post("/remove-wishlist", authenticateToken, async (req, res) => {
 router.get("/fetch-wishlist", authenticateToken, async (req, res) => {
     try {
         const userId = req.user.id;
-        let { page = 1, sort, status, condition, category, priceType, minPrice, maxPrice } = req.query;
+        let { page = 1, sort, status, condition, primaryCategory, secondaryCategory, tertiaryCategory, priceType, minPrice, maxPrice } = req.query;
 
         page = parseInt(page) || 1;
         const limit = 10;
@@ -76,20 +76,60 @@ router.get("/fetch-wishlist", authenticateToken, async (req, res) => {
         // Apply filters
         if (status) filter.status = status;
         if (condition) filter.condition = condition;
-        if (category) {
-            filter.$or = [
-                { "category.primaryCategory": category },
-                { "category.secondaryCategory": category },
-                { "category.tertiaryCategory": category }
-            ];
-        }
+        
+        // Apply category filtering
+        if (primaryCategory) filter["category.primaryCategory"] = primaryCategory;
+        if (secondaryCategory) filter["category.secondaryCategory"] = secondaryCategory;
+        if (tertiaryCategory) filter["category.tertiaryCategory"] = tertiaryCategory;
 
         // Price filter
-        if (priceType && ["cash", "coin", "mix"].includes(priceType)) {
-            let priceField = `price.${priceType}.enteredAmount`;
-            filter[priceField] = { $gte: minPrice || 0 };
-            if (maxPrice && maxPrice < 50000) {
-                filter[priceField].$lte = maxPrice;
+        if (priceType) {
+            if (["cash", "coin"].includes(priceType)) { 
+                let priceField = `price.${priceType}.enteredAmount`;
+                filter[priceField] = { $gte: minPrice || 0 };
+                if (maxPrice) {
+                    filter[priceField].$lte = maxPrice;
+                }                
+            } else if (priceType === "mix") {
+                let cashCondition = {};
+                let coinCondition = {};
+
+                filter["price.mix"] = { $exists: true, $ne: null };
+
+                // Separate min/max for cash
+                if (req.query.minCashPrice || req.query.maxCashPrice) {
+                    cashCondition["price.mix.enteredCash"] = {};
+                    if (req.query.minCashPrice) {
+                        cashCondition["price.mix.enteredCash"].$gte = parseFloat(req.query.minCashPrice);
+                    }
+                    if (req.query.maxCashPrice) {
+                        cashCondition["price.mix.enteredCash"].$lte = parseFloat(req.query.maxCashPrice);
+                    }
+                }
+
+                // Separate min/max for coin
+                if (req.query.minCoinPrice || req.query.maxCoinPrice) {
+                    coinCondition["price.mix.enteredCoin"] = {};
+                    if (req.query.minCoinPrice) {
+                        coinCondition["price.mix.enteredCoin"].$gte = parseFloat(req.query.minCoinPrice);
+                    }
+                    if (req.query.maxCoinPrice) {
+                        coinCondition["price.mix.enteredCoin"].$lte = parseFloat(req.query.maxCoinPrice);
+                    }
+                }
+
+                // Combine conditions
+                filter.$and = [];
+                if (Object.keys(cashCondition).length > 0) {
+                    filter.$and.push(cashCondition);
+                }
+                if (Object.keys(coinCondition).length > 0) {
+                    filter.$and.push(coinCondition);
+                }
+
+                if (filter.$and.length === 0) {
+                    delete filter.$and;
+                }
             }
         }
 
@@ -99,6 +139,12 @@ router.get("/fetch-wishlist", authenticateToken, async (req, res) => {
             sortOptions.createdAt = -1; // Sort by latest posted products
         } else if (sort === "oldest") {
             sortOptions.createdAt = 1; // Sort by oldest posted products
+        } else if (sort === "lowToHigh" && priceType && ["cash", "coin"].includes(priceType)) {
+            let priceField = `price.${priceType}.enteredAmount`;
+            sortOptions[priceField] = 1; // Low to High
+        } else if (sort === "highToLow" && priceType && ["cash", "coin"].includes(priceType)) {
+            let priceField = `price.${priceType}.enteredAmount`;
+            sortOptions[priceField] = -1; // High to Low
         }
 
         // Fetch products with selected fields
