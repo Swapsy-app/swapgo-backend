@@ -1,18 +1,65 @@
 const express = require("express");
 const mongoose = require("mongoose");
+const axios = require("axios");
 const Address = require("../Models/ProductModels/address");
 const authenticateToken = require("../Modules/authMiddleware");
 const router = express.Router();
+
+const DELHIVERY_API_URL = "https://track.delhivery.com/c/api/pin-codes/json/";
+const DELHIVERY_API_KEY = process.env.DELHIVERY_API_KEY; // Replace with your Delhivery API Key
+
+const checkPincodeServiceability = async (pincode) => {
+    try {
+        // Make request to Delhivery API
+        const response = await axios.get(`${DELHIVERY_API_URL}?filter_codes=${pincode}`, {
+            headers: {
+                "Authorization": `Token ${DELHIVERY_API_KEY}`,
+                "Accept": "application/json"
+            }
+        });
+
+        console.log("Delhivery API Response:", JSON.stringify(response.data, null, 2)); // Log the response
+
+        // Extract postal_code data safely
+        const pinData = response.data.delivery_codes?.[0]?.postal_code;
+        if (!pinData) return null;
+
+        return {
+            pickupAvailable: pinData.pickup === "Y",  // Correct key for pickup
+            deliveryAvailable: pinData.pre_paid === "Y" || pinData.cash === "Y",  // Prepaid or Cash accepted
+            codAvailable: pinData.cod === "Y"  // COD availability
+        };
+    } catch (error) {
+        console.error("Delhivery API Error:", error.response?.data || error.message);
+        return null;
+    }
+};
+
 
 // Add a new address
 router.post("/add-address", authenticateToken, async (req, res) => {
     try {
         const { houseNumber, name, address, landmark, pincode, state, city, phoneNumber } = req.body;
-        const userId = req.user._id; // Get userId from JWT token
+        const userId = req.user._id;
 
+        // Check pincode availability using Delhivery API
+        const serviceability = await checkPincodeServiceability(pincode);
+        if (!serviceability) {
+            return res.status(400).json({ message: "Invalid pincode or Delhivery API error." });
+        }
+
+        const { pickupAvailable, deliveryAvailable, codAvailable } = serviceability;
+
+        // If neither pickup nor delivery is available, reject the request
+        if (!pickupAvailable && !deliveryAvailable) {
+            return res.status(400).json({ message: "This pincode is not serviceable for delivery or pickup." });
+        }
+
+        // Check if this is the first address
         const existingAddresses = await Address.find({ userId });
         const isFirstAddress = existingAddresses.length === 0;
-        
+
+        // Create and save new address
         const newAddress = new Address({
             userId,
             houseNumber,
@@ -23,7 +70,10 @@ router.post("/add-address", authenticateToken, async (req, res) => {
             state,
             city,
             phoneNumber,
-            defaultAddress: isFirstAddress // Set first address as default
+            defaultAddress: isFirstAddress,
+            pickupAvailable,
+            deliveryAvailable,
+            codAvailable
         });
 
         await newAddress.save();

@@ -11,6 +11,10 @@ const addressSchema = new mongoose.Schema(
     state: { type: String, required: true },
     city: { type: String, required: true },
     phoneNumber: { type: String, required: true },
+      // New Fields from Delhivery API
+      pickupAvailable: { type: Boolean, default: false },
+      deliveryAvailable: { type: Boolean, default: false },
+      codAvailable: { type: Boolean, default: false },
     defaultAddress: { type: Boolean, default: false } // Mark as default address
   },
   { timestamps: true }
