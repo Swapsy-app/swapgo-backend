@@ -3,29 +3,114 @@ const Product = require("../../Models/ProductModels/Product");
 const User = require("../../Models/User");
 const router = express.Router();
 
-// Fetch all product cards with pagination (15 per page)
+//product card fetch for all purpose with filter and sort
 router.get("/products-card-fetch", async (req, res) => {
   try {
-    let { page = 1 } = req.query; 
+    let { page = 1, sort, priceType, minPrice, maxPrice, ...filters } = req.query;
     page = parseInt(page);
     const limit = 15;
     const skip = (page - 1) * limit;
 
-    // Filter out unavailable products
-    const totalProducts = await Product.countDocuments({ status: { $ne: "unavailable" } });
+    let query = { status: { $ne: "unavailable" } };
+
+    // Apply filters
+    if (filters.status) query.status = filters.status;
+    if (filters.condition) query.condition = filters.condition;
+    if (filters.brand) query.brand = filters.brand;
+    if (filters.fabric) query.fabric = filters.fabric;
+    if (filters.color) query.color = filters.color;
+    if (filters.occasion) query.occasion = filters.occasion;
+
+// Size Filters
+if (filters.sizeString) query["size.sizeString"] = filters.sizeString;
+if (filters.freeSize) query["size.freeSize"] = filters.freeSize === "true"; // Convert to boolean
+if (filters.sizeAttributeName && filters.sizeAttributeValue) {
+  query["size.attributes"] = { 
+    $elemMatch: { 
+      name: filters.sizeAttributeName, 
+      value: filters.sizeAttributeValue 
+    } 
+  };
+}
+
+    // Category filters
+    if (filters.primaryCategory) query["category.primaryCategory"] = filters.primaryCategory;
+    if (filters.secondaryCategory) query["category.secondaryCategory"] = filters.secondaryCategory;
+    if (filters.tertiaryCategory) query["category.tertiaryCategory"] = filters.tertiaryCategory;
+    
+
+// Apply price range filter based on priceType and ensure non-empty values
+if (priceType && ["cash", "coin", "mix"].includes(priceType)) {
+  let priceField;
+
+  if (priceType === "cash") {
+    priceField = "price.cash.enteredAmount";
+    query[priceField] = { $exists: true, $ne: null }; // Ensure cash amount exists
+    if (minPrice) query[priceField].$gte = parseFloat(minPrice);
+    if (maxPrice) query[priceField].$lte = parseFloat(maxPrice);
+  } else if (priceType === "coin") {
+    priceField = "price.coin.enteredAmount";
+    query[priceField] = { $exists: true, $ne: null }; // Ensure coin amount exists
+    if (minPrice) query[priceField].$gte = parseFloat(minPrice);
+    if (maxPrice) query[priceField].$lte = parseFloat(maxPrice);
+  } else if (priceType === "mix") {
+    // Ensure mixCash and mixCoin exist
+    query["$and"] = [
+      { "price.mix.enteredCash": { $exists: true, $ne: null } },
+      { "price.mix.enteredCoin": { $exists: true, $ne: null } }
+    ];
+
+    let mixCashConditions = {};
+    let mixCoinConditions = {};
+
+    if (req.query.minCashMix) mixCashConditions.$gte = parseFloat(req.query.minCashMix);
+    if (req.query.maxCashMix) mixCashConditions.$lte = parseFloat(req.query.maxCashMix);
+    if (req.query.minCoinMix) mixCoinConditions.$gte = parseFloat(req.query.minCoinMix);
+    if (req.query.maxCoinMix) mixCoinConditions.$lte = parseFloat(req.query.maxCoinMix);
+
+    let orConditions = [];
+    if (Object.keys(mixCashConditions).length > 0) {
+      orConditions.push({ "price.mix.enteredCash": mixCashConditions });
+    }
+    if (Object.keys(mixCoinConditions).length > 0) {
+      orConditions.push({ "price.mix.enteredCoin": mixCoinConditions });
+    }
+
+    if (orConditions.length > 0) {
+      query["$and"].push({ $or: orConditions });
+    }
+  }
+}
+
+
+
+    // Sorting logic
+    let sortQuery = {};
+    if (sort === "newest") sortQuery.createdAt = -1;
+    else if (sort === "oldest") sortQuery.createdAt = 1;
+    else if (sort === "priceLowToHigh" && priceType) sortQuery[`price.${priceType}.enteredAmount`] = 1;
+    else if (sort === "priceHighToLow" && priceType) sortQuery[`price.${priceType}.enteredAmount`] = -1;
+
+    // Count total products matching the query
+    const totalProducts = await Product.countDocuments(query);
     const totalPages = Math.ceil(totalProducts / limit);
 
-    const products = await Product.find({ status: { $ne: "unavailable" } }) // Exclude unavailable products
-      .select("images brand title size price sellerId")
-      .populate({
-        path: "sellerId",
-        select: "username avatar",
-      })
+    // Fetch products
+    const products = await Product.find(query)
+      .select("images brand title size price sellerId createdAt")
+      .populate({ path: "sellerId", select: "username avatar" })
+      .sort(sortQuery)
       .skip(skip)
       .limit(limit);
 
-    const formattedProducts = products.map((product) => {
-      const price = {
+    // Format products
+    const formattedProducts = products.map((product) => ({
+      _id: product._id,
+      images: product.images?.length ? [product.images[0]] : [],
+      brand: product.brand || null,
+      title: product.title,
+      size: product.size || null,
+      price: {
         mrp: product.price.mrp,
         cashPrice: product.price.cash?.enteredAmount || false,
         coinPrice: product.price.coin?.enteredAmount || false,
@@ -37,21 +122,12 @@ router.get("/products-card-fetch", async (req, res) => {
         sellerReceivesCoin: product.price.coin?.sellerReceivesCoin || 0,
         sellerReceivesmixCoin: product.price.mix?.sellerReceivesCoin || 0,
         sellerReceivesmixCash: product.price.mix?.sellerReceivesCash || 0,
-      };
-
-      return {
-        _id: product._id,
-        images: product.images?.length ? [product.images[0]] : [], // Fetch only first image
-        brand: product.brand || null,
-        title: product.title,
-        size: product.size || null,
-        price,
-        seller: {
-          username: product.sellerId?.username || "Unknown",
-          avatar: product.sellerId?.avatar || null,
-        },
-      };
-    });
+      },
+      seller: {
+        username: product.sellerId?.username || "Unknown",
+        avatar: product.sellerId?.avatar || null,
+      },
+    }));
 
     res.json({ success: true, page, totalPages, totalProducts, products: formattedProducts });
 
