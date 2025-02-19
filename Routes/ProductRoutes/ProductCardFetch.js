@@ -141,12 +141,21 @@ if (priceType && ["cash", "coin", "mix"].includes(priceType)) {
 router.get("/products-cards/user/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
+    const { status } = req.query; // Get status from query params
     const page = parseInt(req.query.page) || 1;
     const pageSize = 15;
     const skip = (page - 1) * pageSize;
 
-    const products = await Product.find({ sellerId: userId })
-      .select("images brand title size price sellerId createdAt")
+    // Define query with sellerId
+    let query = { sellerId: userId };
+
+    // Apply status filter if provided
+    if (status) {
+      query.status = status; // Assuming status is a string like "active", "sold", etc.
+    }
+
+    const products = await Product.find(query)
+      .select("images brand title size price sellerId createdAt status") // Include status in selection
       .sort({ createdAt: -1 }) // Sorting in descending order (latest first)
       .skip(skip)
       .limit(pageSize)
@@ -181,11 +190,12 @@ router.get("/products-cards/user/:userId", async (req, res) => {
           username: product.sellerId?.username || "Unknown",
           avatar: product.sellerId?.avatar || null,
         },
+        status: product.status, // Include status in response
         createdAt: product.createdAt, // Keeping track of creation date
       };
     });
 
-    const totalProducts = await Product.countDocuments({ sellerId: userId });
+    const totalProducts = await Product.countDocuments(query);
 
     res.json({
       success: true,
