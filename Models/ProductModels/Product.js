@@ -3,19 +3,19 @@ const mongoose = require("mongoose");
 const productSchema = new mongoose.Schema(
   {
     category: {
-      primaryCategory: { type: String, required: true },
-      secondaryCategory: { type: String },
-      tertiaryCategory: { type: String },
+      primaryCategory: { type: String, required: true, index: true},
+      secondaryCategory: { type: String, index: true },
+      tertiaryCategory: { type: String, index: true },
     },
     images: [{ type: String, required: true }],
     video: { type: String },
-    title: { type: String, required: true },
+    title: { type: String, required: true, index: "text" },
     description: { type: String, required: true },
     pickupAddress: { type: mongoose.Schema.Types.ObjectId, ref: "Address", required: true }, //get from address model
     condition: { type: String, required: true },
     manufacturingCountry: { type: String, required: true },
     weight: { type: Number, required: true },
-    brand: { type: String },
+    brand: { type: String, index: true },
     occasion: { type: String },
     color: { type: String },
     shape: { type: String },
@@ -23,7 +23,7 @@ const productSchema = new mongoose.Schema(
     quantity: { type: Number, required: true, default: 1 },
     shippingMethod: { type: String, required: true },
     gstNumber: { type: String }, //get from user profile
-    sellerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true }, // get from user profile jwt token
+    sellerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true }, // get from user profile jwt token
     size: {
       attributes: [{ 
         name: { type: String }, 
@@ -35,16 +35,16 @@ const productSchema = new mongoose.Schema(
     price: {
       mrp: { type: Number, required: true }, // Maximum Retail Price
       cash: {
-        enteredAmount: { type: Number },
+        enteredAmount: { type: Number, index: true },
         sellerReceivesCash: { type: Number },
       },
       coin: {
-        enteredAmount: { type: Number },
+        enteredAmount: { type: Number, index: true },
         sellerReceivesCoin: { type: Number },
       },
       mix: {
-        enteredCash: { type: Number },
-        enteredCoin: { type: Number },
+        enteredCash: { type: Number, index: true },
+        enteredCoin: { type: Number, index: true },
         sellerReceivesCash: { type: Number },
         sellerReceivesCoin: { type: Number },
       }
@@ -63,7 +63,8 @@ const productSchema = new mongoose.Schema(
     "underReview"
   ],
   required: true,
-  default: "available"
+  default: "available",
+  index: true
 },
 views: { type: Number, default: 0 }
   },
