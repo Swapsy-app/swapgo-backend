@@ -1,5 +1,16 @@
-const mongoose=require("mongoose");
-// MongoDB connection
-mongoose.connect(`${process.env.DB_URL}/swapkaro`)
-.then(() => console.log('MongoDB connected'))
-.catch(err => console.log(err));
+const mongoose = require("mongoose");
+require("dotenv").config();
+
+const connectDB = async () => {
+  try {
+    await mongoose.connect(process.env.MONGO_URI);
+    console.log("✅ MongoDB Atlas Connected!");
+  } catch (error) {
+    console.error("❌ MongoDB Connection Error:", error);
+    process.exit(1);
+  }
+};
+
+connectDB();
+
+module.exports = mongoose;
