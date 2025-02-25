@@ -114,6 +114,39 @@ router.get("/get-cart", authenticateToken, async (req, res) => {
     }
   });  
 
+//get number of product/combo in cart counter
+router.get("/get-buyer-cart-summary", authenticateToken, async (req, res) => {
+  try {
+    const buyerId = req.user._id;
+
+    // Find all cart items for the buyer
+    const carts = await Cart.find({ buyerId });
+
+    if (!carts.length) {
+      return res.status(404).json({ message: "Cart is empty" });
+    }
+
+    let totalProducts = 0;
+    let uniqueSellers = new Set();
+
+    // Iterate through each seller's cart
+    carts.forEach(cart => {
+      totalProducts += cart.products.length; // Count total products
+      uniqueSellers.add(cart.sellerId.toString()); // Add unique seller IDs
+    });
+
+    const totalCombos = uniqueSellers.size; // Number of different sellers = number of combos
+
+    res.status(200).json({
+      totalProducts,
+      totalCombos,
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+  
+
 // Remove product(s) from cart (seller-wise or product-wise)
 router.delete("/remove-cart", authenticateToken, async (req, res) => {
   try {
