@@ -17,6 +17,7 @@ const productBargain=require("./Routes/ProductRoutes/ProductBargainRoutes");
 const productComment = require("./Routes/ProductRoutes/ProductCommentRoutes");
 const ProductWishlist = require("./Routes/ProductRoutes/ProductWishlist");
 const ProductPincode = require("./Routes/ProductRoutes/ProductPincode");
+const ProductCart = require("./Routes/ProductRoutes/ProductCartRoutes");
 
 const app=express();
 const server = require('http').createServer(app);
@@ -41,6 +42,7 @@ app.use("/api/bargain",productBargain);
 app.use("/api/comments", productComment);
 app.use("/api/wishlist", ProductWishlist);
 app.use("/api/pincode", ProductPincode);
+app.use("/api/cart", ProductCart);
 
 app.use('/public', express.static('./public'));
 
