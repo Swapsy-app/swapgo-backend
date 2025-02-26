@@ -11,6 +11,7 @@ const userSchema = new mongoose.Schema({
     aboutMe: { type: String },
     gender: { type: String },
     occupation: { type: String},
+    holidayMode: { type: Boolean, default: false }, // Track holiday mode
     gst: {
         type: String,
         unique: true,
@@ -33,6 +34,29 @@ const userSchema = new mongoose.Schema({
 },
 { timestamps: true } // Enable timestamps
 );
+
+//middleware to handle holidaymode
+userSchema.pre("save", async function (next) {
+    if (this.isModified("holidayMode")) { // ✅ Only execute if holidayMode changes
+      const Product = mongoose.model("Product");
+  
+      if (this.holidayMode) {
+        // ✅ If holiday mode is ON, update all "available" products to "unavailable"
+        await Product.updateMany(
+          { sellerId: this._id, status: "available" },
+          { $set: { status: "unavailable", wasAvailableBeforeHoliday: true } }
+        );
+      } else {
+        // ✅ If holiday mode is OFF, revert back products that were available before
+        await Product.updateMany(
+          { sellerId: this._id, status: "unavailable", wasAvailableBeforeHoliday: true },
+          { $set: { status: "available", wasAvailableBeforeHoliday: false } }
+        );
+      }
+    }
+  
+    next();
+  });
 
 const User = mongoose.model('User', userSchema);
 

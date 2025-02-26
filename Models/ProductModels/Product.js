@@ -66,6 +66,7 @@ const productSchema = new mongoose.Schema(
   default: "available",
   index: true
 },
+wasAvailableBeforeHoliday: { type: Boolean, default: false }, // Tracks if Holiday Mode changed status
 views: { type: Number, default: 0 }
   },
   { timestamps: true }

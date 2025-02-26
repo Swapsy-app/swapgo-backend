@@ -18,6 +18,7 @@ const productComment = require("./Routes/ProductRoutes/ProductCommentRoutes");
 const ProductWishlist = require("./Routes/ProductRoutes/ProductWishlist");
 const ProductPincode = require("./Routes/ProductRoutes/ProductPincode");
 const ProductCart = require("./Routes/ProductRoutes/ProductCartRoutes");
+const HolidayMode = require("./Routes/SellerFeatureRoutes/HolidayMode")
 
 const app=express();
 const server = require('http').createServer(app);
@@ -25,7 +26,6 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs));
 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
-
 
 
 //I'm Starting Code Here
@@ -43,6 +43,7 @@ app.use("/api/comments", productComment);
 app.use("/api/wishlist", ProductWishlist);
 app.use("/api/pincode", ProductPincode);
 app.use("/api/cart", ProductCart);
+app.use("/api/holiday", HolidayMode);
 
 app.use('/public', express.static('./public'));
 
