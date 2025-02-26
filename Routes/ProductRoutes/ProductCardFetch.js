@@ -81,35 +81,29 @@ if (priceType && ["cash", "coin", "mix"].includes(priceType)) {
   }
 }
 
-// Search Feature (Case-Insensitive + Prioritized Fuzzy Search)
+//search feature
 if (search) {
-  const searchWords = search.trim().split(/\s+/); // Split by spaces
-  const searchRegexArray = searchWords.map(word => new RegExp(word, "i"));
+  const searchWords = search.trim().split(/\s+/);
 
-  query["$or"] = [
-    { title: { $all: searchRegexArray } }, // Prioritize full match of all words in title
-    { brand: { $all: searchRegexArray } },
-    { "category.primaryCategory": { $all: searchRegexArray } },
-    { "category.secondaryCategory": { $all: searchRegexArray } },
-    { "category.tertiaryCategory": { $all: searchRegexArray } },
-  ];
+  // First Attempt: Full-Text Search (If Indexed)
+  query["$text"] = { $search: search };
 
-  // If no results for full matches, allow partial matches (at least one word)
-  const partialMatchQuery = {
-    "$or": searchWords.flatMap(word => [
-      { title: new RegExp(word, "i") },
-      { brand: new RegExp(word, "i") },
-      { "category.primaryCategory": new RegExp(word, "i") },
-      { "category.secondaryCategory": new RegExp(word, "i") },
-      { "category.tertiaryCategory": new RegExp(word, "i") }
-    ])
-  };
+  //  Count matching documents (To check if $text search works)
+  const textMatchCount = await Product.countDocuments(query);
 
-  // Check if there are full matches, else use partial match query
-  const exactMatchCount = await Product.countDocuments(query);
-  if (exactMatchCount === 0) {
-    query = partialMatchQuery;
+  //  If no results from full-text, use regex fallback
+  if (textMatchCount === 0) {
+    delete query["$text"]; // Remove conflicting $text search
+
+    query["$or"] = searchWords.flatMap(word => [
+      { title: { $regex: new RegExp(word, "i") } },
+      { brand: { $regex: new RegExp(word, "i") } },
+      { "category.primaryCategory": { $regex: new RegExp(word, "i") } },
+      { "category.secondaryCategory": { $regex: new RegExp(word, "i") } },
+      { "category.tertiaryCategory": { $regex: new RegExp(word, "i") } }
+    ]);
   }
+
 }
 
     // Sorting logic
@@ -161,6 +155,44 @@ if (search) {
 
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+//autocomplete route for search suggestion based on brand and category
+router.get("/autocomplete", async (req, res) => {
+  const { search } = req.query;
+
+  if (!search) return res.json({ suggestions: [] });
+
+  try {
+    const searchWords = search.trim().split(/\s+/); // Split by spaces
+
+    // Regex to match any word in the input anywhere in the field
+    const regexArray = searchWords.map(word => new RegExp(word, "i")); 
+
+    const suggestions = await Product.find({
+      $or: [
+        { brand: { $in: regexArray } },
+        { "category.primaryCategory": { $in: regexArray } },
+        { "category.secondaryCategory": { $in: regexArray } },
+        { "category.tertiaryCategory": { $in: regexArray } }
+      ]
+    }).select("brand category").limit(5); // Limit results
+
+    // Extract unique suggestions
+    const uniqueSuggestions = new Set();
+    
+    suggestions.forEach(item => {
+      if (item.brand) uniqueSuggestions.add(item.brand);
+      if (item.category?.primaryCategory) uniqueSuggestions.add(item.category.primaryCategory);
+      if (item.category?.secondaryCategory) uniqueSuggestions.add(item.category.secondaryCategory);
+      if (item.category?.tertiaryCategory) uniqueSuggestions.add(item.category.tertiaryCategory);
+    });
+
+    res.json({ suggestions: Array.from(uniqueSuggestions) });
+  } catch (error) {
+    console.error("Error fetching autocomplete:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
