@@ -1,5 +1,6 @@
 require("dotenv").config();
 const express=require("express");
+const cors = require("cors");
 const { specs, swaggerUi } = require('./swagger');
 require("./DataBase/Connection");
 require("./Seeder/seedDatabase");
@@ -18,7 +19,8 @@ const productComment = require("./Routes/ProductRoutes/ProductCommentRoutes");
 const ProductWishlist = require("./Routes/ProductRoutes/ProductWishlist");
 const ProductPincode = require("./Routes/ProductRoutes/ProductPincode");
 const ProductCart = require("./Routes/ProductRoutes/ProductCartRoutes");
-const HolidayMode = require("./Routes/SellerFeatureRoutes/HolidayMode")
+const HolidayMode = require("./Routes/SellerFeatureRoutes/HolidayMode");
+const ShippingLabel = require("./Routes/SellerFeatureRoutes/ShippingLabel");
 
 const app=express();
 const server = require('http').createServer(app);
@@ -26,6 +28,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs));
 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
+app.use(cors({ origin: "http://localhost:5173" }));
 
 
 //I'm Starting Code Here
@@ -44,6 +47,7 @@ app.use("/api/wishlist", ProductWishlist);
 app.use("/api/pincode", ProductPincode);
 app.use("/api/cart", ProductCart);
 app.use("/api/holiday", HolidayMode);
+app.use("/api/shippinglabel", ShippingLabel);
 
 app.use('/public', express.static('./public'));
 
