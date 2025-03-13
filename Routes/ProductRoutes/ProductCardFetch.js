@@ -3,7 +3,6 @@ const Product = require("../../Models/ProductModels/Product");
 const User = require("../../Models/User");
 const router = express.Router();
 
-//product card fetch for all purpose with filter and sort
 router.get("/products-card-fetch", async (req, res) => {
   try {
     let { page = 1, sort, priceType, minPrice, maxPrice, search, ...filters } = req.query;
@@ -21,112 +20,142 @@ router.get("/products-card-fetch", async (req, res) => {
     if (filters.color) query.color = filters.color;
     if (filters.occasion) query.occasion = filters.occasion;
 
-// Size Filters
-if (filters.sizeString) query["size.sizeString"] = filters.sizeString;
-if (filters.freeSize) query["size.freeSize"] = filters.freeSize === "true"; // Convert to boolean
-if (filters.sizeAttributeName && filters.sizeAttributeValue) {
-  query["size.attributes"] = { 
-    $elemMatch: { 
-      name: filters.sizeAttributeName, 
-      value: filters.sizeAttributeValue 
-    } 
-  };
-}
-
-if (filters.primaryCategory) query["category.primaryCategory"] = new RegExp(filters.primaryCategory, "i"); // Case-insensitive
-if (filters.secondaryCategory) query["category.secondaryCategory"] = new RegExp(filters.secondaryCategory, "i"); // Case-insensitive
-if (filters.tertiaryCategory) query["category.tertiaryCategory"] = new RegExp(filters.tertiaryCategory, "i"); // Case-insensitive
-    
-
-// Apply price range filter based on priceType and ensure non-empty values
-if (priceType && ["cash", "coin", "mix"].includes(priceType)) {
-  let priceField;
-
-  if (priceType === "cash") {
-    priceField = "price.cash.enteredAmount";
-    query[priceField] = { $exists: true, $ne: null }; // Ensure cash amount exists
-    if (minPrice) query[priceField].$gte = parseFloat(minPrice);
-    if (maxPrice) query[priceField].$lte = parseFloat(maxPrice);
-  } else if (priceType === "coin") {
-    priceField = "price.coin.enteredAmount";
-    query[priceField] = { $exists: true, $ne: null }; // Ensure coin amount exists
-    if (minPrice) query[priceField].$gte = parseFloat(minPrice);
-    if (maxPrice) query[priceField].$lte = parseFloat(maxPrice);
-  } else if (priceType === "mix") {
-    // Ensure mixCash and mixCoin exist
-    query["$and"] = [
-      { "price.mix.enteredCash": { $exists: true, $ne: null } },
-      { "price.mix.enteredCoin": { $exists: true, $ne: null } }
-    ];
-
-    let mixCashConditions = {};
-    let mixCoinConditions = {};
-
-    if (req.query.minCashMix) mixCashConditions.$gte = parseFloat(req.query.minCashMix);
-    if (req.query.maxCashMix) mixCashConditions.$lte = parseFloat(req.query.maxCashMix);
-    if (req.query.minCoinMix) mixCoinConditions.$gte = parseFloat(req.query.minCoinMix);
-    if (req.query.maxCoinMix) mixCoinConditions.$lte = parseFloat(req.query.maxCoinMix);
-
-    let orConditions = [];
-    if (Object.keys(mixCashConditions).length > 0) {
-      orConditions.push({ "price.mix.enteredCash": mixCashConditions });
-    }
-    if (Object.keys(mixCoinConditions).length > 0) {
-      orConditions.push({ "price.mix.enteredCoin": mixCoinConditions });
+    // Size Filters
+    if (filters.sizeString) query["size.sizeString"] = filters.sizeString;
+    if (filters.freeSize) query["size.freeSize"] = filters.freeSize === "true"; // Convert to boolean
+    if (filters.sizeAttributeName && filters.sizeAttributeValue) {
+      query["size.attributes"] = { 
+        $elemMatch: { 
+          name: filters.sizeAttributeName, 
+          value: filters.sizeAttributeValue 
+        } 
+      };
     }
 
-    if (orConditions.length > 0) {
-      query["$and"].push({ $or: orConditions });
+    if (filters.primaryCategory) query["category.primaryCategory"] = new RegExp(filters.primaryCategory, "i"); // Case-insensitive
+    if (filters.secondaryCategory) query["category.secondaryCategory"] = new RegExp(filters.secondaryCategory, "i"); // Case-insensitive
+    if (filters.tertiaryCategory) query["category.tertiaryCategory"] = new RegExp(filters.tertiaryCategory, "i"); // Case-insensitive
+
+    // Apply price range filter based on priceType and ensure non-empty values
+    if (priceType && ["cash", "coin", "mix"].includes(priceType)) {
+      let priceField;
+
+      if (priceType === "cash") {
+        priceField = "price.cash.enteredAmount";
+        query[priceField] = { $exists: true, $ne: null }; // Ensure cash amount exists
+        if (minPrice) query[priceField].$gte = parseFloat(minPrice);
+        if (maxPrice) query[priceField].$lte = parseFloat(maxPrice);
+      } else if (priceType === "coin") {
+        priceField = "price.coin.enteredAmount";
+        query[priceField] = { $exists: true, $ne: null }; // Ensure coin amount exists
+        if (minPrice) query[priceField].$gte = parseFloat(minPrice);
+        if (maxPrice) query[priceField].$lte = parseFloat(maxPrice);
+      } else if (priceType === "mix") {
+        // Ensure mixCash and mixCoin exist
+        query["$and"] = [
+          { "price.mix.enteredCash": { $exists: true, $ne: null } },
+          { "price.mix.enteredCoin": { $exists: true, $ne: null } }
+        ];
+
+        let mixCashConditions = {};
+        let mixCoinConditions = {};
+
+        if (req.query.minCashMix) mixCashConditions.$gte = parseFloat(req.query.minCashMix);
+        if (req.query.maxCashMix) mixCashConditions.$lte = parseFloat(req.query.maxCashMix);
+        if (req.query.minCoinMix) mixCoinConditions.$gte = parseFloat(req.query.minCoinMix);
+        if (req.query.maxCoinMix) mixCoinConditions.$lte = parseFloat(req.query.maxCoinMix);
+
+        let orConditions = [];
+        if (Object.keys(mixCashConditions).length > 0) {
+          orConditions.push({ "price.mix.enteredCash": mixCashConditions });
+        }
+        if (Object.keys(mixCoinConditions).length > 0) {
+          orConditions.push({ "price.mix.enteredCoin": mixCoinConditions });
+        }
+
+        if (orConditions.length > 0) {
+          query["$and"].push({ $or: orConditions });
+        }
+      }
     }
-  }
-}
 
-//search feature
-if (search) {
-  const searchWords = search.trim().split(/\s+/);
+    // Search feature
+    if (search) {
+      const searchWords = search.trim().split(/\s+/);
 
-  // First Attempt: Full-Text Search (If Indexed)
-  query["$text"] = { $search: search };
+      // First Attempt: Full-Text Search (If Indexed)
+      query["$text"] = { $search: search };
 
-  //  Count matching documents (To check if $text search works)
-  const textMatchCount = await Product.countDocuments(query);
+      // Count matching documents (To check if $text search works)
+      const textMatchCount = await Product.countDocuments(query);
 
-  //  If no results from full-text, use regex fallback
-  if (textMatchCount === 0) {
-    delete query["$text"]; // Remove conflicting $text search
+      // If no results from full-text, use regex fallback
+      if (textMatchCount === 0) {
+        delete query["$text"]; // Remove conflicting $text search
 
-    query["$or"] = searchWords.flatMap(word => [
-      { title: { $regex: new RegExp(word, "i") } },
-      { brand: { $regex: new RegExp(word, "i") } },
-      { "category.primaryCategory": { $regex: new RegExp(word, "i") } },
-      { "category.secondaryCategory": { $regex: new RegExp(word, "i") } },
-      { "category.tertiaryCategory": { $regex: new RegExp(word, "i") } }
-    ]);
-  }
-
-}
-
-    // Sorting logic
-    let sortQuery = {};
-    if (sort === "newest") sortQuery.createdAt = -1;
-    else if (sort === "oldest") sortQuery.createdAt = 1;
-    else if (sort === "priceLowToHigh" && priceType) sortQuery[`price.${priceType}.enteredAmount`] = 1;
-    else if (sort === "priceHighToLow" && priceType) sortQuery[`price.${priceType}.enteredAmount`] = -1;
-
-    // Count total products matching the query
-    const totalProducts = await Product.countDocuments(query);
-    const totalPages = Math.ceil(totalProducts / limit);
+        query["$or"] = searchWords.flatMap(word => [
+          { title: { $regex: new RegExp(word, "i") } },
+          { brand: { $regex: new RegExp(word, "i") } },
+          { "category.primaryCategory": { $regex: new RegExp(word, "i") } },
+          { "category.secondaryCategory": { $regex: new RegExp(word, "i") } },
+          { "category.tertiaryCategory": { $regex: new RegExp(word, "i") } }
+        ]);
+      }
+    }
 
     // Fetch products
-    const products = await Product.find(query)
-      .select("images brand title size price sellerId createdAt")
-      .populate({ path: "sellerId", select: "username avatar" })
-      .sort(sortQuery)
-      .skip(skip)
-      .limit(limit);
+    const products = await Product.aggregate([
+      { $match: query },
+      { $addFields: { random: { $rand: {} } } }, // Add a random field
+      {
+        $addFields: {
+          isNew: { $gte: ["$createdAt", new Date(Date.now() - 3 * 7 * 24 * 60 * 60 * 1000)] }, // Products added within last 3 weeks
+          isLowView: { $lt: ["$views", 100] } // Products with less than 100 views
+        }
+      },
+      {
+        $sort: {
+          isLowView: -1, // Prioritize low-view products
+          isNew: -1, // Prioritize new products
+          random: 1, // Sort by random field
+          createdAt: -1 // Sort by creation date
+        }
+      }
+    ]);
+
+    // Separate products into high-view and low-view sets
+    const lowViewProducts = products.filter(product => product.isLowView);
+    const highViewProducts = products.filter(product => !product.isLowView);
+
+    // Shuffle each set
+    const shuffleArray = (array) => array.sort(() => Math.random() - 0.5);
+    const shuffledLowViewProducts = shuffleArray(lowViewProducts);
+    const shuffledHighViewProducts = shuffleArray(highViewProducts);
+
+    // Mix the sets in the desired ratio (70% low-view, 30% high-view)
+    const mixedProducts = [];
+    const lowViewCount = Math.ceil(0.7 * limit);
+    const highViewCount = limit - lowViewCount;
+
+    for (let i = 0; i < lowViewCount && i < shuffledLowViewProducts.length; i++) {
+      mixedProducts.push(shuffledLowViewProducts[i]);
+    }
+    for (let i = 0; i < highViewCount && i < shuffledHighViewProducts.length; i++) {
+      mixedProducts.push(shuffledHighViewProducts[i]);
+    }
+
+    // Prioritize new products (created within the last 3 weeks)
+    const newProducts = mixedProducts.filter(product => product.isNew);
+    const oldProducts = mixedProducts.filter(product => !product.isNew);
+
+    // Combine and shuffle the final list
+    const finalProducts = shuffleArray([...newProducts, ...oldProducts]);
+
+    // Paginate the final list
+    const paginatedProducts = finalProducts.slice(skip, skip + limit);
 
     // Format products
-    const formattedProducts = products.map((product) => ({
+    const formattedProducts = paginatedProducts.map((product) => ({
       _id: product._id,
       images: product.images?.length ? [product.images[0]] : [],
       brand: product.brand || null,
@@ -149,9 +178,9 @@ if (search) {
         username: product.sellerId?.username || "Unknown",
         avatar: product.sellerId?.avatar || null,
       },
+      views: product.views, // Include views in the response for verification
     }));
-
-    res.json({ success: true, page, totalPages, totalProducts, products: formattedProducts });
+    res.json({ success: true, page, totalPages: Math.ceil(products.length / limit), totalProducts: products.length, products: formattedProducts });
 
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
