@@ -8,7 +8,9 @@ const User = require("../Models/User");
 const { sendEmail } = require("../Modules/Email");
 const authenticateToken = require("../Modules/authMiddleware");
 const BlacklistedToken = require("../Models/blacklistedAccessToken"); // Model for blacklisted tokens
-
+const Wallet = require("../Models/WalletModels/Cash");
+const CoinWallet = require("../Models/CoinWalletModels/Coin");
+const CoinTransaction = require("../Models/CoinWalletModels/CoinTrans");
 
 // AES encryption key and initialization vector (IV)
 const encryptionKey = Buffer.from(process.env.ENCRYPTION_KEY, "hex"); // 256-bit key
@@ -194,6 +196,30 @@ userRouter.post("/signup", async (req, res) => {
         });
 
         await newUser.save();
+
+       // Create wallet for the new user
+       const wallet = new Wallet({ userId: newUser._id });
+       await wallet.save();
+
+ // Create coin wallet for the new user with 500 reward coins
+ const coinWallet = new CoinWallet({ userId: newUser._id, rewardCoinBalance: 500 });
+ await coinWallet.save();
+
+ // Create a welcome bonus transaction
+ const welcomeTransaction = new CoinTransaction({
+     userId: newUser._id,
+     coinAmount: 500,
+     type: 'credit',
+     description: 'SwapGo Welcome Bonus'
+ });
+ await welcomeTransaction.save();
+
+ // Update user with wallet and coin wallet references
+ newUser.wallet = wallet._id;
+ newUser.coinWallet = coinWallet._id;
+ await newUser.save();
+
+
         await sendEmail(email, "Your OTP for Verification", `Your OTP is: ${otp}`);
         res.status(201).send({ message: "Signup successful. Please verify your email." });
     } catch (err) {

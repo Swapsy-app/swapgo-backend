@@ -2,6 +2,8 @@ const express = require('express');
 const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const User = require('../Models/User'); // Adjust the path as needed
+const CoinWallet = require('../Models/CoinWalletModels/Coin'); // Adjust the path as needed
+const CoinTransaction = require('../Models/CoinWalletModels/CoinTrans'); // Adjust the path as needed
 const { isUserOnline } = require('../Modules/websocket'); // Adjust the path as needed
 const authenticateToken = require('../Modules/authMiddleware'); // Middleware to authenticate token and check if the user is verified
 const router = express.Router();
@@ -74,11 +76,46 @@ router.put('/profile', authenticateToken, async (req, res) => {
         if (mobile) req.user.mobile = mobile;
         if (gst) req.user.gst = gst;
 
-        await req.user.save();
-        res.json({ message: 'Profile updated successfully', user: req.user });
-    } catch (error) {
-        res.status(500).json({ message: 'Server error' });
-    }
+  // Check if all required fields are present and if the reward has not been given yet
+  const requiredFields = [name, username, gender, occupation, aboutMe, email, mobile];
+  const allFieldsPresent = requiredFields.every(field => field);
+  const coinWallet = await CoinWallet.findOne({ userId: req.user._id });
+
+  if (allFieldsPresent && !req.user.profileCompleteRewardGiven) {
+      // Reward 150 coins if profile is complete and reward has not been given
+      coinWallet.rewardCoinBalance += 150;
+      await coinWallet.save();
+
+      const transaction = new CoinTransaction({
+          userId: req.user._id,
+          coinAmount: 150,
+          type: 'credit',
+          description: 'Profile Completion Reward'
+      });
+      await transaction.save();
+
+      req.user.profileCompleteRewardGiven = true; // Mark the reward as given
+  } else if (!allFieldsPresent && req.user.profileCompleteRewardGiven) {
+      // Deduct 150 coins if profile is incomplete and reward has been given
+      coinWallet.rewardCoinBalance -= 150;
+      await coinWallet.save();
+
+      const transaction = new CoinTransaction({
+          userId: req.user._id,
+          coinAmount: 150,
+          type: 'debit',
+          description: 'Profile Incompletion Penalty'
+      });
+      await transaction.save();
+
+      req.user.profileCompleteRewardGiven = false; // Mark the reward as not given
+  }
+
+  await req.user.save();
+  res.json({ message: 'Profile updated successfully', user: req.user });
+} catch (error) {
+  res.status(500).json({ message: 'Server error' });
+}
 });
 
 module.exports = router;

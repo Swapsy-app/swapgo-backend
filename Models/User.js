@@ -30,7 +30,10 @@ const userSchema = new mongoose.Schema({
     otp: String,
     otpExpires: Date,
     isVerified: { type: Boolean, default: false }, // New field for verification status
-    refreshToken: { type: String } // Store refresh token here
+    refreshToken: { type: String }, // Store refresh token here
+    wallet: { type: mongoose.Schema.Types.ObjectId, ref: 'Wallet' }, // Reference to wallet
+    coinWallet: { type: mongoose.Schema.Types.ObjectId, ref: 'CoinWallet' }, // Reference to coin wallet
+    profileCompleteRewardGiven: { type: Boolean, default: false }, // Track if profile completion reward has been given
 },
 { timestamps: true } // Enable timestamps
 );

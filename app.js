@@ -21,6 +21,8 @@ const ProductPincode = require("./Routes/ProductRoutes/ProductPincode");
 const ProductCart = require("./Routes/ProductRoutes/ProductCartRoutes");
 const HolidayMode = require("./Routes/SellerFeatureRoutes/HolidayMode");
 const ShippingLabel = require("./Routes/SellerFeatureRoutes/ShippingLabel");
+const CashWallet = require("./Routes/WalletRoutes/CashRoutes");
+const CoinWallet = require("./Routes/WalletRoutes/CoinRoutes");
 
 const app=express();
 const server = require('http').createServer(app);
@@ -48,6 +50,8 @@ app.use("/api/pincode", ProductPincode);
 app.use("/api/cart", ProductCart);
 app.use("/api/holiday", HolidayMode);
 app.use("/api/shippinglabel", ShippingLabel);
+app.use("/api/walletcash", CashWallet);
+app.use("/api/walletcoin", CoinWallet);
 
 app.use('/public', express.static('./public'));
 
