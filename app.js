@@ -23,6 +23,8 @@ const HolidayMode = require("./Routes/SellerFeatureRoutes/HolidayMode");
 const ShippingLabel = require("./Routes/SellerFeatureRoutes/ShippingLabel");
 const CashWallet = require("./Routes/WalletRoutes/CashRoutes");
 const CoinWallet = require("./Routes/WalletRoutes/CoinRoutes");
+const PaymentOrder = require("./Routes/PaymentRoutes/PaymentRoutes");
+const PaymentWebHook = require("./Routes/PaymentRoutes/PaymentWebhook");
 
 const app=express();
 const server = require('http').createServer(app);
@@ -52,6 +54,8 @@ app.use("/api/holiday", HolidayMode);
 app.use("/api/shippinglabel", ShippingLabel);
 app.use("/api/walletcash", CashWallet);
 app.use("/api/walletcoin", CoinWallet);
+app.use("/api/paymentorder", PaymentOrder);
+app.use("/api/paymentwebhook", PaymentWebHook);
 
 app.use('/public', express.static('./public'));
 

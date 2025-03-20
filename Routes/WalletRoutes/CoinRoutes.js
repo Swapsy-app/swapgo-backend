@@ -6,22 +6,23 @@ const authenticateToken = require('../../Modules/authMiddleware'); // Adjust the
 
 // Get Coin Wallet Balance
 router.get('/coin-wallet', authenticateToken, async (req, res) => {
-  try {
-    const userId = req.user._id;
-    const coinWallet = await CoinWallet.findOne({ userId }).populate('userId', 'username');
-    if (!coinWallet) return res.status(404).json({ message: 'Coin wallet not found' });
-
-    const totalBalance = coinWallet.rewardCoinBalance + coinWallet.earnedCoinBalance;
-
-    res.json({
-      rewardCoinBalance: coinWallet.rewardCoinBalance,
-      earnedCoinBalance: coinWallet.earnedCoinBalance,
-      totalBalance: totalBalance
-    });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
+    try {
+      const userId = req.user._id;
+      const coinWallet = await CoinWallet.findOne({ userId }).populate('userId', 'username');
+      
+      if (!coinWallet) return res.status(404).json({ message: 'Coin wallet not found' });
+  
+      res.json({
+        rewardCoinBalance: coinWallet.rewardCoinBalance,
+        earnedCoinBalance: coinWallet.earnedCoinBalance,
+        boughtCoinBalance: coinWallet.boughtCoinBalance, // Include bought coins
+        totalBalance: coinWallet.totalCoinBalance // Using the virtual field
+      });
+    } catch (error) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
 
 // Get Coin Transaction History
 router.get('/coin-transactions', authenticateToken, async (req, res) => {
