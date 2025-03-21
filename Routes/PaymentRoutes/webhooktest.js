@@ -6,19 +6,19 @@ const timestamp = Math.floor(Date.now() / 1000).toString(); // Current UNIX time
 const rawBody = JSON.stringify({
     data: {
         order: {
-            order_id: "order_1742060602742_678778c26ade644a89fecbd0",
+            order_id: "order_1742230481873_678778c26ade644a89fecbd0",
             order_amount: 1000,
             order_currency: "INR",
             order_tags: null
         },
         payment: {
-            cf_payment_id: "1453002795",
+            cf_payment_id: "1453002796",
             payment_status: "SUCCESS",
-            payment_amount: 200,
+            payment_amount: 1000,
             payment_currency: "INR",
             payment_message: "00::Transaction success",
             payment_time: "2025-03-16T12:00:00+05:30",
-            bank_reference: "234928698581",
+            bank_reference: "234928698582",
             auth_id: null,
             payment_method: {
                 upi: {

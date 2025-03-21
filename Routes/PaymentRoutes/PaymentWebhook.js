@@ -44,7 +44,7 @@ router.post("/cashfree-webhook", express.raw({ type: "application/json" }), asyn
         }
 
         const { order_id, order_amount } = order;
-        const { cf_payment_id, bank_reference, payment_status } = payment;
+        const { cf_payment_id, bank_reference, payment_status, payment_amount } = payment;
 
         const paymentOrder = await PaymentOrder.findOne({ orderId: order_id });
         if (!paymentOrder) {
@@ -114,7 +114,8 @@ if (parseFloat(payment_amount) !== parseFloat(order_amount)) {
             userId,
             coinAmount: coinsToAdd,
             type: "credit",
-            description: `Coins purchased via payment (Order ID: ${order_id})`
+            description: `Coins purchased via payment (Order ID: ${order_id})`,
+            orderId: order_id  // ✅ Linking transaction to payment order
         });
         await coinTransaction.save();
 

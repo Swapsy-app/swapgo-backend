@@ -3,6 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 
 const coinTransactionSchema = new mongoose.Schema({
   transactionId: { type: String, default: uuidv4, unique: true },
+  orderId: { type: String },  // ✅ Storing related orderId
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   coinAmount: { type: Number, required: true },
   type: { type: String, enum: ['credit', 'debit'], required: true },
