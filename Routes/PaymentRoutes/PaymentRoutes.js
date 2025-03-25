@@ -41,7 +41,7 @@ router.post("/create-payment", authenticateToken, async (req, res) => {
                     "x-client-id": process.env.CASHFREE_CLIENT_ID,
                     "x-client-secret": process.env.CASHFREE_CLIENT_SECRET,
                     "Content-Type": "application/json",
-                    "x-api-version": "2023-08-01"
+                    "x-api-version": "2025-01-01"
                 }
             }
         );
