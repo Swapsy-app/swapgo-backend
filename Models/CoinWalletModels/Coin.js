@@ -6,6 +6,7 @@ const coinWalletSchema = new mongoose.Schema({
   earnedCoinBalance: { type: Number, default: 0 }, // Coins earned through activities
   boughtCoinBalance: { type: Number, default: 0 }, // Coins purchased using INR
   borrowedCoinBalance: { type: Number, default: 0 }, // ✅ Coins borrowed
+  blockedCoins: { type: Number, default: 0 }, // Coins blocked for selling
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });

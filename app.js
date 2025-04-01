@@ -26,6 +26,9 @@ const CoinWallet = require("./Routes/WalletRoutes/CoinRoutes");
 const PaymentOrder = require("./Routes/PaymentRoutes/PaymentRoutes");
 const PaymentWebHook = require("./Routes/PaymentRoutes/PaymentWebhook");
 const BorrowCoinRefundRoute = require("./Routes/CoinWalletFeatures/BorrowCoinRefundRoute");
+const SellCoinRoute = require("./Routes/CoinWalletFeatures/SellCoinRoute");
+
+const AdminSellCoin = require("./Routes/AdminRoutes/SellApprove/SellAproveRoute");
 
 const app=express();
 const server = require('http').createServer(app);
@@ -58,6 +61,8 @@ app.use("/api/walletcoin", CoinWallet);
 app.use("/api/paymentorder", PaymentOrder);
 app.use("/api/paymentwebhook", PaymentWebHook);
 app.use("/api/borrowcoinrefund", BorrowCoinRefundRoute);
+app.use("/api/sellcoin", SellCoinRoute);
+app.use("/adm/sellcoin", AdminSellCoin);
 
 app.use('/public', express.static('./public'));
 
