@@ -7,6 +7,7 @@ const CashWallet = require("../../../Models/WalletModels/Cash"); // Renamed for 
 const CoinTransaction = require("../../../Models/CoinWalletModels/CoinTrans");
 const CashTransaction = require("../../../Models/WalletModels/cashTrans");
 const User = require("../../../Models/User"); // Import the User model
+const adminAuth = require("../../../Modules/adminAuthMiddleware");
 
 function getCashRate(totalBlockedCoins) {
     if (totalBlockedCoins >= 3000) return 0.15;
@@ -15,7 +16,7 @@ function getCashRate(totalBlockedCoins) {
     return 0.22;
 }
 
-router.post("/approve-sell", async (req, res) => {
+router.post("/approve-sell", adminAuth("superadmin"), async (req, res) => {
     try {
         const { userId, amountApproved } = req.body;
 
@@ -91,7 +92,7 @@ router.post("/approve-sell", async (req, res) => {
     }
 });
 
-router.get("/sell-users", async (req, res) => {
+router.get("/sell-users", adminAuth("superadmin"), async (req, res) => {
     try {
         // Get page number from query, default to 1
         const page = parseInt(req.query.page) || 1;
@@ -139,7 +140,7 @@ router.get("/sell-users", async (req, res) => {
     }
 });
 
-router.get("/sell-history/:userId", async (req, res) => {
+router.get("/sell-history/:userId", adminAuth("superadmin"), async (req, res) => {
     try {
         const { userId } = req.params;
         const page = parseInt(req.query.page) || 1; // Default to page 1
