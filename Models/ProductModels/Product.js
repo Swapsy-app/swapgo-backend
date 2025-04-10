@@ -52,8 +52,6 @@ const productSchema = new mongoose.Schema(
         "available",
         "sold",
         "unavailable",
-        "issues",
-        "draft",
         "underReview",
       ],
       required: true,

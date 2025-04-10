@@ -4,6 +4,8 @@ const crypto = require("crypto");
 const orderSchema = new mongoose.Schema(
   {
     buyerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    paymentOrderMongoId: { type: mongoose.Schema.Types.ObjectId, ref: "PaymentOrder" },
+    paymentOrderId: { type: String },
 
     products: [
       {
@@ -29,7 +31,7 @@ paymentStatus: {
 
 orderStatus: {
   type: String,
-  enum: ["pending", "pickup_confirmed", "shipped", "delivered", "returned", "cancelled"],
+  enum: ["pending", "pickup_confirmed", "shipped", "delivered", "cancelled"],
   required: true,
   default: "pending"
 },
