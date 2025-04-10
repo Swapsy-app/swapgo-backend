@@ -8,36 +8,48 @@ const authenticateToken = require("../../Modules/authMiddleware");
 //add to cart from same seller upto 5 products per seller
 router.post("/add-cart", authenticateToken, async (req, res) => {
   try {
-    const buyerId = req.user._id; // Fetch authenticated user's ID
+    const buyerId = req.user._id;
     const { productId } = req.body;
 
-    // Fetch product details
-    const product = await Product.findById(productId).select("sellerId");
+    // Fetch product details including pickupAddress
+    const product = await Product.findById(productId).select("sellerId pickupAddress");
     if (!product) return res.status(404).json({ message: "Product not found" });
 
     const sellerId = product.sellerId;
 
-    // Prevent seller from adding their own product to the cart
+    // Prevent seller from adding their own product
     if (buyerId.toString() === sellerId.toString()) {
       return res.status(400).json({ message: "Sellers cannot add their own products to the cart" });
     }
 
-    // Find buyer's cart for this seller
+    // Find existing cart for this seller
     let cart = await Cart.findOne({ buyerId, sellerId });
 
     if (!cart) {
-      cart = new Cart({ buyerId, sellerId, products: [] });
-    } else if (cart.products.length >= 5) {
-      return res.status(400).json({ message: "You can add a maximum of 5 products per seller" });
+      // If no cart, create a new one
+      cart = new Cart({ buyerId, sellerId, products: [productId] });
+    } else {
+      if (cart.products.length >= 5) {
+        return res.status(400).json({ message: "You can add a maximum of 5 products per seller" });
+      }
+
+      if (cart.products.includes(productId)) {
+        return res.status(400).json({ message: "Product already in cart" });
+      }
+
+      // Fetch existing products in cart to verify pickupAddress
+      const existingProducts = await Product.find({ _id: { $in: cart.products } }).select("pickupAddress");
+
+      const allSamePickup = existingProducts.every(p => p.pickupAddress.toString() === product.pickupAddress.toString());
+
+      if (!allSamePickup) {
+        return res.status(400).json({ message: "All products from a seller must have the same pickup address" });
+      }
+
+      // Add product to cart
+      cart.products.push(productId);
     }
 
-    // Check if product is already in cart
-    if (cart.products.includes(productId)) {
-      return res.status(400).json({ message: "Product already in cart" });
-    }
-
-    // Add product to cart
-    cart.products.push(productId);
     await cart.save();
 
     res.status(200).json({ message: "Product added to cart", cart });
@@ -46,6 +58,7 @@ router.post("/add-cart", authenticateToken, async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 });
+
 
 //get cart details
 router.get("/get-cart", authenticateToken, async (req, res) => {

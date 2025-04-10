@@ -171,5 +171,120 @@ router.get("/estimate-delivery", async (req, res) => {
     }
 });
 
+//shipping charge calculator for both single and cart products upto 5 from same seller
+router.get("/calculate-shipping", async (req, res) => {
+    try {
+      const { productId, cartItems, buyerAddressId } = req.query;
+  
+      if (!buyerAddressId) {
+        return res.status(400).json({ message: "Buyer address ID is required." });
+      }
+  
+      // Fetch buyer pincode
+      const buyerAddress = await Address.findById(buyerAddressId).select("pincode");
+      if (!buyerAddress || !buyerAddress.pincode) {
+        return res.status(404).json({ message: "Buyer's pincode not found." });
+      }
+      const buyerPincode = buyerAddress.pincode;
+  
+      let sellerPincode = "";
+      let weightCategories = [];
+      let isCart = false;
+  
+      if (productId) {
+        // Single product
+        const product = await Product.findById(productId).select("weight pickupAddress");
+        if (!product) return res.status(404).json({ message: "Product not found." });
+  
+        const pickupAddress = await Address.findById(product.pickupAddress).select("pincode");
+        if (!pickupAddress || !pickupAddress.pincode) {
+          return res.status(404).json({ message: "Seller's pincode not found." });
+        }
+  
+        weightCategories.push(product.weight);
+        sellerPincode = pickupAddress.pincode;
+  
+      } else if (cartItems) {
+        // Cart shipping
+        const items = JSON.parse(cartItems);
+        if (!Array.isArray(items) || items.length === 0 || items.length > 5) {
+          return res.status(400).json({ message: "Cart must have 1 to 5 items." });
+        }
+  
+        let pincodes = new Set();
+        isCart = true;
+  
+        for (const item of items) {
+          const product = await Product.findById(item.productId).select("weight pickupAddress");
+          if (!product) return res.status(404).json({ message: `Product ${item.productId} not found.` });
+  
+          const pickupAddress = await Address.findById(product.pickupAddress).select("pincode");
+          if (!pickupAddress || !pickupAddress.pincode) {
+            return res.status(404).json({ message: "One or more seller pincodes not found." });
+          }
+  
+          weightCategories.push(...Array(item.quantity || 1).fill(product.weight));
+          pincodes.add(pickupAddress.pincode);
+        }
+  
+        if (pincodes.size > 1) {
+          return res.status(400).json({ message: "All cart items must be from the same seller location." });
+        }
+  
+        sellerPincode = [...pincodes][0];
+      } else {
+        return res.status(400).json({ message: "Provide either productId or cartItems." });
+      }
+  
+      // Get shipping zone
+      const zoneRes = await axios.get("https://track.delhivery.com/api/kinko/v1/invoice/charges/.json", {
+        params: {
+          md: "S",
+          o_pin: sellerPincode,
+          d_pin: buyerPincode,
+          cgm: 500, // Placeholder since it's required; actual weight not used
+          ss: "DTO"
+        },
+        headers: {
+          Authorization: `Token ${DELHIVERY_API_KEY}`,
+          Accept: "application/json"
+        }
+      });
+  
+      const zone = normalizeZone(zoneRes.data?.[0]?.zone || "F");
+  
+      // Placeholder shipping rate logic
+      const getShippingRate = (zone, category, isCart) => {
+        // Replace this with your actual rate table later
+        const key = `${zone}-${category}-${isCart ? "cart" : "single"}`;
+        const fakeRateTable = {
+          "A-Under 500g-single": 30,
+          "A-Under 500g-cart": 25,
+          "B-500g - 1kg-single": 50,
+          "B-500g - 1kg-cart": 45,
+          // Add the rest...
+        };
+        return fakeRateTable[key] || 99;
+      };
+  
+      // Total shipping charge
+      let totalCharge = 0;
+      for (const category of weightCategories) {
+        totalCharge += getShippingRate(zone, category, isCart);
+      }
+  
+      return res.json({
+        buyerPincode,
+        sellerPincode,
+        zone,
+        weightCategories,
+        shippingCharge: totalCharge
+      });
+  
+    } catch (err) {
+      console.error("Shipping calc error:", err.response?.data || err.message);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });  
 
 module.exports = router;

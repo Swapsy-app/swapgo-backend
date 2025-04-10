@@ -52,10 +52,7 @@ const productSchema = new mongoose.Schema(
         "available",
         "sold",
         "unavailable",
-        "orderReceived",
-        "shipped",
         "issues",
-        "cancelled",
         "draft",
         "underReview",
       ],
@@ -102,6 +99,11 @@ productSchema.pre("save", function (next) {
   if (!hasCash && !hasCoin && !hasMix) {
     return next(new Error("At least one pricing mode (cash, coin, or mix) must be provided."));
   }
+
+    // ✅ Auto mark product as sold when quantity is 0
+    if (this.quantity === 0) {
+      this.status = "sold";
+    }
 
   next();
 });
