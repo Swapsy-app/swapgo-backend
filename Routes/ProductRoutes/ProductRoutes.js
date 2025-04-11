@@ -86,7 +86,7 @@ router.post("/add-product", authenticateToken, async (req, res) => {
 
   // Ensure status is set to "available" if not provided
   productData.status = productData.status || "available";
-
+  productData.quantityMode = Number(productData.quantity) > 1 ? true : false;
     const product = new Product(productData);
     await product.save();
     
@@ -102,6 +102,8 @@ router.put("/edit-product/:id", authenticateToken, async (req, res) => {
     const product = await Product.findById(req.params.id);
     if (!product) return res.status(404).json({ success: false, message: "Product not found" });
     if (product.sellerId.toString() !== req.user.id) return res.status(403).json({ success: false, message: "Unauthorized" });
+
+    delete req.body.quantityMode; // Prevent changing quantityMode
 
     Object.assign(product, req.body);
     await product.save();
@@ -140,11 +142,68 @@ router.patch("/product/:id/toggle-availability", authenticateToken, async (req, 
 });
 
 
-// Delete a product
+// 🔁 Toggle available/sold status if quantityMode is true
+router.patch("/toggle-status-if-quantity-mode/:id", authenticateToken, async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id);
+
+    if (!product) {
+      return res.status(404).json({ success: false, message: "Product not found" });
+    }
+
+    if (!product.quantityMode) {
+      return res.status(400).json({ success: false, message: "Toggle not allowed: quantityMode is false" });
+    }
+
+    const currentStatus = product.status;
+
+    if (currentStatus === "available") {
+      // Toggling to 'sold'
+      product.status = "sold";
+      product.quantity = 0;
+    } else if (currentStatus === "sold") {
+      // Toggling to 'available' - require quantity in request body
+      const { quantity } = req.body;
+      if (!quantity || quantity < 1) {
+        return res.status(400).json({ success: false, message: "Quantity must be at least 1 to mark as available" });
+      }
+      product.status = "available";
+      product.quantity = quantity;
+    } else {
+      return res.status(400).json({ success: false, message: `Toggle not supported for status: ${currentStatus}` });
+    }
+
+    await product.save();
+
+    res.status(200).json({
+      success: true,
+      message: `Product status toggled to ${product.status}`,
+      product
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Server error", error: error.message });
+  }
+});
+
+// 🔒 Delete product only if not sold and never purchased
 router.delete("/delete-product/:id", authenticateToken, async (req, res) => {
   try {
-    const deletedProduct = await Product.findByIdAndDelete(req.params.id);
-    if (!deletedProduct) return res.status(404).json({ error: "Product not found" });
+    const product = await Product.findById(req.params.id);
+
+    if (!product) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+
+    if (product.status === "sold") {
+      return res.status(400).json({ error: "Cannot delete a product that is marked as sold" });
+    }
+
+    if (product.quantitySold > 0) {
+      return res.status(400).json({ error: "Cannot delete a product that has been sold even once" });
+    }
+
+    await product.deleteOne();
+
     res.json({ message: "Product deleted successfully" });
   } catch (error) {
     res.status(400).json({ error: error.message });
