@@ -13,8 +13,14 @@ router.get("/products-card-fetch", async (req, res) => {
     let query = { status: { $ne: "unavailable" } };
 
     // Apply filters
-    if (filters.status) query.status = filters.status;
-    if (filters.condition) query.condition = filters.condition;
+    if (filters.status) {
+      const statusList = filters.status.split(",");
+      query.status = { $in: statusList };
+    }
+    if (filters.condition) {
+      const conditionList = filters.condition.split(",");
+      query.condition = { $in: conditionList };
+    }
     if (filters.brand) query.brand = new RegExp(filters.brand, "i"); // Case-insensitive
     if (filters.fabric) query.fabric = filters.fabric;
     if (filters.color) query.color = filters.color;
@@ -32,9 +38,45 @@ router.get("/products-card-fetch", async (req, res) => {
       };
     }
 
-    if (filters.primaryCategory) query["category.primaryCategory"] = new RegExp(filters.primaryCategory, "i"); // Case-insensitive
-    if (filters.secondaryCategory) query["category.secondaryCategory"] = new RegExp(filters.secondaryCategory, "i"); // Case-insensitive
-    if (filters.tertiaryCategory) query["category.tertiaryCategory"] = new RegExp(filters.tertiaryCategory, "i"); // Case-insensitive
+    // if (filters.primaryCategory) query["category.primaryCategory"] = new RegExp(filters.primaryCategory, "i"); // Case-insensitive
+    // if (filters.secondaryCategory) query["category.secondaryCategory"] = new RegExp(filters.secondaryCategory, "i"); // Case-insensitive
+    // if (filters.tertiaryCategory) query["category.tertiaryCategory"] = new RegExp(filters.tertiaryCategory, "i"); // Case-insensitive
+
+    if (filters.primaryCategory) {
+      const primaryCategories = filters.primaryCategory.split(",").map(cat => new RegExp(cat, "i"));
+      query["category.primaryCategory"] = { $in: primaryCategories };
+    }
+    
+    if (filters.secondaryCategory) {
+      const secondaryCategories = filters.secondaryCategory.split(",").map(cat => new RegExp(cat, "i"));
+      query["category.secondaryCategory"] = { $in: secondaryCategories };
+    }
+    
+    if (filters.tertiaryCategory) {
+      const tertiaryCategories = filters.tertiaryCategory.split(",").map(cat => new RegExp(cat, "i"));
+      query["category.tertiaryCategory"] = { $in: tertiaryCategories };
+    }
+
+    if (filters.combinedCategory) {
+      // Split the incoming comma-separated values, convert them to lowercase, and trim whitespace.
+      const combinedValues = filters.combinedCategory
+        .split(",")
+        .map(val => val.trim().toLowerCase());
+    
+      // Use $expr to compute a concatenated string from category.primaryCategory and category.tertiaryCategory
+      query.$expr = {
+        $in: [
+          {
+            $toLower: {
+              $concat: ["$category.primaryCategory", "_", "$category.tertiaryCategory"]
+            }
+          },
+          combinedValues
+        ]
+      };
+    }
+    
+    
 
     // Apply price range filter based on priceType and ensure non-empty values
     if (priceType && ["cash", "coin", "mix"].includes(priceType)) {
@@ -163,12 +205,12 @@ router.get("/products-card-fetch", async (req, res) => {
       size: product.size || null,
       price: {
         mrp: product.price.mrp,
-        cashPrice: product.price.cash?.enteredAmount || false,
-        coinPrice: product.price.coin?.enteredAmount || false,
+        cashPrice: product.price.cash?.enteredAmount,
+        coinPrice: product.price.coin?.enteredAmount,
         mixPrice:
           product.price.mix?.enteredCash && product.price.mix?.enteredCoin
             ? { enteredCash: product.price.mix.enteredCash, enteredCoin: product.price.mix.enteredCoin }
-            : false,
+            : null,
         sellerReceivesCash: product.price.cash?.sellerReceivesCash || 0,
         sellerReceivesCoin: product.price.coin?.sellerReceivesCoin || 0,
         sellerReceivesmixCoin: product.price.mix?.sellerReceivesCoin || 0,
@@ -187,34 +229,32 @@ router.get("/products-card-fetch", async (req, res) => {
   }
 });
 
-//autocomplete route for search suggestion based on brand and category
+// Autocomplete route for search suggestion based on brand and primary/tertiary category
 router.get("/autocomplete", async (req, res) => {
   const { search } = req.query;
 
   if (!search) return res.json({ suggestions: [] });
 
   try {
-    const searchWords = search.trim().split(/\s+/); // Split by spaces
+    const searchWords = search.trim().split(/\s+/);
 
-    // Regex to match any word in the input anywhere in the field
+    // Create case-insensitive regex for each word
     const regexArray = searchWords.map(word => new RegExp(word, "i")); 
 
     const suggestions = await Product.find({
       $or: [
         { brand: { $in: regexArray } },
         { "category.primaryCategory": { $in: regexArray } },
-        { "category.secondaryCategory": { $in: regexArray } },
         { "category.tertiaryCategory": { $in: regexArray } }
       ]
-    }).select("brand category").limit(5); // Limit results
+    }).select("brand category").limit(5);
 
-    // Extract unique suggestions
+    // Extract unique suggestions excluding secondary category
     const uniqueSuggestions = new Set();
     
     suggestions.forEach(item => {
       if (item.brand) uniqueSuggestions.add(item.brand);
       if (item.category?.primaryCategory) uniqueSuggestions.add(item.category.primaryCategory);
-      if (item.category?.secondaryCategory) uniqueSuggestions.add(item.category.secondaryCategory);
       if (item.category?.tertiaryCategory) uniqueSuggestions.add(item.category.tertiaryCategory);
     });
 

@@ -19,7 +19,7 @@ const authenticateToken = async (req, res, next) => {
 
         // Verify JWT token
         jwt.verify(token, process.env.JWT_TOKEN, async (err, decodedUser) => {
-            if (err) return res.status(403).json({ message: "Invalid token" });
+            if (err) return res.status(401).json({ message: "Invalid token" });
 
             const foundUser = await User.findById(decodedUser.id);
             if (!foundUser) {
