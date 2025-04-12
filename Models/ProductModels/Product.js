@@ -24,6 +24,15 @@ const productSchema = new mongoose.Schema(
     shippingMethod: { type: String, required: true },
     gstNumber: { type: String },
     sellerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
+    quantityMode: {
+  type: Boolean,
+  default: false,
+  immutable: true  // ensures it can't be updated once set
+},
+quantitySold: {
+  type: Number,
+  default: 0,
+},
     size: {
       attributes: [{ name: { type: String }, value: { type: String } }],
       freeSize: { type: Boolean, default: false },
