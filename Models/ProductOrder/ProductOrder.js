@@ -5,7 +5,6 @@ const orderSchema = new mongoose.Schema(
   {
     buyerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     paymentOrderMongoId: { type: mongoose.Schema.Types.ObjectId, ref: "PaymentOrder" },
-    paymentOrderId: { type: String },
 
     products: [
       {
@@ -18,29 +17,56 @@ const orderSchema = new mongoose.Schema(
           required: true,
         },
         shippingCharge: { type: Number, required: true, default: 0 },
+        convenienceCharge: { type: Number, required: true, default: 0 },
         weight: { type: String, required: true },
+
+        // 📌 Snapshot from Product
+        fullPrice: {
+          mrp: { type: Number, required: true },
+          cash: {
+            enteredAmount: { type: Number },
+            sellerReceivesCash: { type: Number },
+          },
+          coin: {
+            enteredAmount: { type: Number },
+            sellerReceivesCoin: { type: Number },
+          },
+          mix: {
+            enteredCash: { type: Number },
+            enteredCoin: { type: Number },
+            sellerReceivesCash: { type: Number },
+            sellerReceivesCoin: { type: Number },
+          },
+        },
+        title: { type: String, required: true },
+        gstNumber: { type: String },
+        condition: { type: String, required: true },
       },
     ],
 
-paymentStatus: {
-  type: String,
-  enum: ["pending", "completed", "refunded", "cancelled"],
-  required: true,
-  default: "pending"
-},
+    paymentStatus: {
+      type: String,
+      enum: ["pending", "completed", "refunded", "cancelled"],
+      required: true,
+      default: "pending"
+    },
 
-orderStatus: {
-  type: String,
-  enum: ["pending", "pickup_confirmed", "shipped", "delivered", "cancelled"],
-  required: true,
-  default: "pending"
-},
+    orderStatus: {
+      type: String,
+      enum: ["pending", "pickup_confirmed", "shipped", "delivered", "cancelled"],
+      required: true,
+      default: "pending"
+    },
 
-issueStatus: {
-  type: String,
-  enum: ["none", "requested", "approved", "rejected"],
-  default: "none"
-},
+    issueStatus: {
+      type: String,
+      enum: ["none", "requested", "approved", "rejected"],
+      default: "none"
+    },
+
+    issueResolution: {
+      type: String
+    },
 
     paymentMode: {
       type: String,
@@ -48,7 +74,13 @@ issueStatus: {
       required: true,
     },
 
-    codCharge: { type: Number, default: 0 }, // 💰 Extra charge if COD is selected
+    paymentPrepaidType: {
+      type: String
+    },
+
+    deliveryPrtner: { type: String},
+    deliveryAWB: { type: String},
+    deliveryoption: { type: String},
 
     transactionId: {
       type: String,
@@ -59,11 +91,13 @@ issueStatus: {
     pickupAddressId: { type: mongoose.Schema.Types.ObjectId, ref: "Address", required: true },
     deliveryAddressId: { type: mongoose.Schema.Types.ObjectId, ref: "Address", required: true },
 
+    totalShippingDiscount: { type: Number}, // in case of cart orders only, this will be the sum of all shipping discounts for each product
     totalShippingCharge: { type: Number, required: true },
+    totalconvenienceCharge: { type: Number, required: true },
+    codCharge: { type: Number, default: 0 },
 
-    // 🔹 Payment breakdown before coin purchase
+    // 🔹 Payment breakdown before coin purchase and the amount that need to be paid to seller
     productCashPaid: { type: Number, required: true, default: 0 },
-    productCoinPaid: { type: Number, required: true, default: 0 },
 
     // 🔹 If user bought coins on the order page
     coinPurchase: {
@@ -72,8 +106,8 @@ issueStatus: {
     },
 
     // 🔹 Final overall payment
-    totalCashPaid: { type: Number, required: true, default: 0 }, // productCashPaid + cashSpentForCoins + cod charge
-    totalCoinPaid: { type: Number, required: true, default: 0 }, // productCoinPaid
+    totalCashPaid: { type: Number, required: true, default: 0 }, //including shipping and convinience and coin purchased
+    totalCoinPaid: { type: Number, required: true, default: 0 },
   },
   { timestamps: true }
 );
@@ -81,31 +115,28 @@ issueStatus: {
 
 // 🧠 Middleware: Set transactionId and codCharge
 orderSchema.pre("save", async function (next) {
-    // Generate unique TXN ID if not already present
-    if (!this.transactionId) {
-      let isUnique = false;
-      while (!isUnique) {
-        const date = new Date();
-        const yyyyMMdd = date.toISOString().slice(0, 10).replace(/-/g, "");
-        const randomHex = crypto.randomBytes(4).toString("hex").toUpperCase();
-        const txnId = `TXN-${yyyyMMdd}-${randomHex}`;
-  
-        const existing = await mongoose.models.Order.findOne({ transactionId: txnId });
-        if (!existing) {
-          this.transactionId = txnId;
-          isUnique = true;
-        }
+  if (!this.transactionId) {
+    let isUnique = false;
+    while (!isUnique) {
+      const date = new Date();
+      const yyyyMMdd = date.toISOString().slice(0, 10).replace(/-/g, "");
+      const randomHex = crypto.randomBytes(4).toString("hex").toUpperCase();
+      const txnId = `TXN-${yyyyMMdd}-${randomHex}`;
+
+      const existing = await mongoose.models.Order.findOne({ transactionId: txnId });
+      if (!existing) {
+        this.transactionId = txnId;
+        isUnique = true;
       }
     }
-  
-    // Add COD charge if paymentMode is COD
-    if (this.paymentMode === "COD" && this.codCharge === 0) {
-      this.codCharge = 50;
-      this.totalCashPaid += 50;
-    }
-  
-    next();
-  });
-  
+  }
+
+  if (this.paymentMode === "COD" && this.codCharge === 0) {
+    this.codCharge = 50;
+    this.totalCashPaid += 50;
+  }
+
+  next();
+});
 
 module.exports = mongoose.model("Order", orderSchema);

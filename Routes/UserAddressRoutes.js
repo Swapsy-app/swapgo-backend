@@ -86,29 +86,44 @@ router.post("/add-address", authenticateToken, async (req, res) => {
 // Get all addresses for a user with pagination
 router.get("/user-address", authenticateToken, async (req, res) => {
     try {
-        const userId = req.user._id; // Get userId from JWT token
-        const { page = 1, limit = 10 } = req.query; // Default to page 1 and limit 10
-
-        const skip = (page - 1) * limit; // Calculate the number of records to skip
-        const addresses = await Address.find({ userId })
-            .skip(skip)  // Skip the records based on the page number
-            .limit(limit); // Limit the number of records per page
-
-        const totalAddresses = await Address.countDocuments({ userId }); // Get the total number of addresses
-        const totalPages = Math.ceil(totalAddresses / limit); // Calculate total pages
-
-        return res.status(200).json({
-            addresses,
-            pagination: {
-                currentPage: page,
-                totalPages,
-                totalAddresses,
-            },
-        });
+      const userId = req.user._id;
+      const { page = 1, limit = 10 } = req.query;
+      const skip = (page - 1) * limit;
+  
+      // 1. Fetch default address
+      const defaultAddress = await Address.findOne({ userId, defaultAddress: true });
+  
+      // 2. Fetch the rest (excluding default), sorted by createdAt (latest first)
+      const restAddressesQuery = { userId };
+      if (defaultAddress) {
+        restAddressesQuery._id = { $ne: defaultAddress._id };
+      }
+  
+      const restAddresses = await Address.find(restAddressesQuery)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit);
+  
+      // 3. Combine the result
+      const addresses = defaultAddress ? [defaultAddress, ...restAddresses] : restAddresses;
+  
+      // 4. Pagination info for non-default addresses
+      const totalNonDefault = await Address.countDocuments(restAddressesQuery);
+      const totalPages = Math.ceil(totalNonDefault / limit);
+  
+      return res.status(200).json({
+        addresses,
+        pagination: {
+          currentPage: page,
+          totalPages,
+          totalAddresses: totalNonDefault + (defaultAddress ? 1 : 0),
+        },
+      });
     } catch (error) {
-        return res.status(500).json({ message: "Error fetching addresses", error: error.message });
+      return res.status(500).json({ message: "Error fetching addresses", error: error.message });
     }
-});
+  });
+  
 
 
 // Update an existing address

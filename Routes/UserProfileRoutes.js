@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const User = require('../Models/User'); // Adjust the path as needed
+const Follow = require('../Models/community');
 const CoinWallet = require('../Models/CoinWalletModels/Coin'); // Adjust the path as needed
 const CoinTransaction = require('../Models/CoinWalletModels/CoinTrans'); // Adjust the path as needed
 const { isUserOnline } = require('../Modules/websocket'); // Adjust the path as needed
@@ -88,7 +89,7 @@ router.get('/profile', authenticateToken, async (req, res) => {
 
 // Get all avatar image URLs
 router.get('/avatars', (req, res) => {
-    const allowedAvatars = ['user.png', 'bear.png', 'boy.png', 'bussiness-man_(1)', 'cat.png', 'gamer_(1).png', 'gamer.png', 'girl.png', 'man_(1).png', 'man_(2).png', 'man_(3).png', 'man_(4).png', 'man_(5).png', 'man_(6).png', 'man.png', 'meerkat.png', 'moslem-woman.png', 'panda.png', 'pensioner.png', 'profile_(1).png', 'profile.png', 'target.png', 'user_(1).png', 'woman.png', 'woman_(1).png', 'woman_(2).png', 'woman_(3).png', 'woman_(4).png', 'woman_(7).png', 'woman_(8).png'];
+    const allowedAvatars = ['user.png', 'bear.png', 'boy.png', 'bussiness-man_(1).png', 'cat.png', 'gamer_(1).png', 'gamer.png', 'girl.png', 'man_(1).png', 'man_(2).png', 'man_(3).png', 'man_(4).png', 'man_(5).png', 'man_(6).png', 'man.png', 'meerkat.png', 'moslem-woman.png', 'panda.png', 'pensioner.png', 'profile_(1).png', 'profile.png', 'target.png', 'user_(1).png', 'woman.png', 'woman_(1).png', 'woman_(2).png', 'woman_(3).png', 'woman_(4).png', 'woman_(7).png', 'woman_(8).png'];
 
     // Generate the URLs for each avatar image
     // const avatarUrls = allowedAvatars.map(avatar => `http://localhost:3000/public/avatars/${avatar}`);

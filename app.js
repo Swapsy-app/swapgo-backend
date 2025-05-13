@@ -27,6 +27,7 @@ const PaymentOrder = require("./Routes/PaymentRoutes/PaymentRoutes");
 const PaymentWebHook = require("./Routes/PaymentRoutes/PaymentWebhook");
 const BorrowCoinRefundRoute = require("./Routes/CoinWalletFeatures/BorrowCoinRefundRoute");
 const SellCoinRoute = require("./Routes/CoinWalletFeatures/SellCoinRoute");
+const ProductOrderReview = require("./Routes/ProductOrder/ProductOrderReview");
 
 const AdminAuth = require("./Routes/AdminRoutes/AdminAuth/AdminUser");
 const AdminSellCoin = require("./Routes/AdminRoutes/SellApprove/SellAproveRoute");
@@ -63,6 +64,7 @@ app.use("/api/paymentorder", PaymentOrder);
 app.use("/api/paymentwebhook", PaymentWebHook);
 app.use("/api/borrowcoinrefund", BorrowCoinRefundRoute);
 app.use("/api/sellcoin", SellCoinRoute);
+app.use("/api/productorder", ProductOrderReview);
 
 app.use("/adm/admuser", AdminAuth);
 app.use("/adm/sellcoin", AdminSellCoin);

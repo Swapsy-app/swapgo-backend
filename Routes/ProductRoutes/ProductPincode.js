@@ -171,120 +171,146 @@ router.get("/estimate-delivery", async (req, res) => {
     }
 });
 
-//shipping charge calculator for both single and cart products upto 5 from same seller
-router.get("/calculate-shipping", async (req, res) => {
+//calculate shipping charge route
+router.get("/calculate-shipping-charge", authenticateToken, async (req, res) => {
     try {
-      const { productId, cartItems, buyerAddressId } = req.query;
-  
-      if (!buyerAddressId) {
-        return res.status(400).json({ message: "Buyer address ID is required." });
-      }
-  
-      // Fetch buyer pincode
-      const buyerAddress = await Address.findById(buyerAddressId).select("pincode");
-      if (!buyerAddress || !buyerAddress.pincode) {
-        return res.status(404).json({ message: "Buyer's pincode not found." });
-      }
-      const buyerPincode = buyerAddress.pincode;
-  
-      let sellerPincode = "";
-      let weightCategories = [];
-      let isCart = false;
-  
-      if (productId) {
-        // Single product
-        const product = await Product.findById(productId).select("weight pickupAddress");
-        if (!product) return res.status(404).json({ message: "Product not found." });
-  
-        const pickupAddress = await Address.findById(product.pickupAddress).select("pincode");
-        if (!pickupAddress || !pickupAddress.pincode) {
-          return res.status(404).json({ message: "Seller's pincode not found." });
+        const userId = req.user.id; // from access token
+        const { productId, addressId } = req.query;
+
+        if (!productId) return res.status(400).json({ message: "Product ID is required" });
+
+        // Fetch product and pickup pincode and weight
+        const product = await Product.findById(productId).select("pickupAddress weight");
+        if (!product || !product.pickupAddress || !product.weight) {
+            return res.status(400).json({ message: "Incomplete product information" });
         }
-  
-        weightCategories.push(product.weight);
-        sellerPincode = pickupAddress.pincode;
-  
-      } else if (cartItems) {
-        // Cart shipping
-        const items = JSON.parse(cartItems);
-        if (!Array.isArray(items) || items.length === 0 || items.length > 5) {
-          return res.status(400).json({ message: "Cart must have 1 to 5 items." });
+
+        const pickup = await Address.findById(product.pickupAddress).select("pincode");
+        if (!pickup) return res.status(400).json({ message: "Pickup address not found" });
+        const sellerPincode = pickup.pincode;
+
+        // Fetch buyer address
+        let buyerPincode;
+        if (addressId) {
+            const buyerAddress = await Address.findById(addressId).select("pincode");
+            if (!buyerAddress) return res.status(400).json({ message: "Invalid address ID" });
+            buyerPincode = buyerAddress.pincode;
+        } else {
+            const defaultAddress = await Address.findOne({ userId, defaultAddress: true }).select("pincode");
+            if (!defaultAddress) return res.status(400).json({ message: "No default address found. Please provide addressId." });
+            buyerPincode = defaultAddress.pincode;
         }
-  
-        let pincodes = new Set();
-        isCart = true;
-  
-        for (const item of items) {
-          const product = await Product.findById(item.productId).select("weight pickupAddress");
-          if (!product) return res.status(404).json({ message: `Product ${item.productId} not found.` });
-  
-          const pickupAddress = await Address.findById(product.pickupAddress).select("pincode");
-          if (!pickupAddress || !pickupAddress.pincode) {
-            return res.status(404).json({ message: "One or more seller pincodes not found." });
+
+        // Fetch delivery zone using Delhivery API
+        const zoneResponse = await axios.get("https://track.delhivery.com/api/kinko/v1/invoice/charges/.json", {
+            params: {
+                md: "S",
+                o_pin: sellerPincode,
+                d_pin: buyerPincode,
+                cgm: 500, // Initial dummy weight
+                ss: "DTO"
+            },
+            headers: {
+                "Authorization": `Token ${DELHIVERY_API_KEY}`,
+                "Accept": "application/json"
+            }
+        });
+
+        let deliveryZone = "F"; // Default
+        if (zoneResponse.data?.[0]?.zone) {
+            deliveryZone = normalizeZone(zoneResponse.data[0].zone.trim());
+        }
+
+        // Determine charge slab based on weight
+        let weightSlab = "";
+        let weight; // ✅ define here
+        const validSlabs = ["0-500g", "500g-1kg", "1kg-2kg", "2kg-5kg", "5kg-10kg"];
+        
+        if (typeof product.weight === "string") {
+          const normalized = product.weight.toLowerCase().replace(/\s+/g, '');
+          if (validSlabs.includes(normalized)) {
+            weightSlab = normalized;
+          } else {
+            console.log("⚠️ Invalid weight string format:", product.weight);
           }
-  
-          weightCategories.push(...Array(item.quantity || 1).fill(product.weight));
-          pincodes.add(pickupAddress.pincode);
+        } else if (typeof product.weight === "number") {
+          weight = product.weight; // ✅ assign to outer variable
+          console.log("Weight is a number:", weight);
+        
+          if (weight <= 500) weightSlab = "0-500g";
+          else if (weight <= 1000) weightSlab = "500g-1kg";
+          else if (weight <= 2000) weightSlab = "1kg-2kg";
+          else if (weight <= 5000) weightSlab = "2kg-5kg";
+          else if (weight <= 10000) weightSlab = "5kg-10kg";
+          else weightSlab = "above 10kg";
         }
-  
-        if (pincodes.size > 1) {
-          return res.status(400).json({ message: "All cart items must be from the same seller location." });
-        }
-  
-        sellerPincode = [...pincodes][0];
-      } else {
-        return res.status(400).json({ message: "Provide either productId or cartItems." });
-      }
-  
-      // Get shipping zone
-      const zoneRes = await axios.get("https://track.delhivery.com/api/kinko/v1/invoice/charges/.json", {
-        params: {
-          md: "S",
-          o_pin: sellerPincode,
-          d_pin: buyerPincode,
-          cgm: 500, // Placeholder since it's required; actual weight not used
-          ss: "DTO"
-        },
-        headers: {
-          Authorization: `Token ${DELHIVERY_API_KEY}`,
-          Accept: "application/json"
-        }
-      });
-  
-      const zone = normalizeZone(zoneRes.data?.[0]?.zone || "F");
-  
-      // Placeholder shipping rate logic
-      const getShippingRate = (zone, category, isCart) => {
-        // Replace this with your actual rate table later
-        const key = `${zone}-${category}-${isCart ? "cart" : "single"}`;
-        const fakeRateTable = {
-          "A-Under 500g-single": 30,
-          "A-Under 500g-cart": 25,
-          "B-500g - 1kg-single": 50,
-          "B-500g - 1kg-cart": 45,
-          // Add the rest...
+        
+
+        // Pricing Table (from image)
+        const pricingTable = {
+            "A": {
+                "0-500g": [50, 5],
+                "500g-1kg": [90, 9],
+                "1kg-2kg": [150, 20],
+                "2kg-5kg": [250, 40],
+                "5kg-10kg": [340, 60],
+            },
+            "B": {
+                "0-500g": [80, 15],
+                "500g-1kg": [150, 35],
+                "1kg-2kg": [230, 45],
+                "2kg-5kg": [310, 55],
+                "5kg-10kg": [540, 97],
+            },
+            "C": {
+                "0-500g": [80, 15],
+                "500g-1kg": [150, 35],
+                "1kg-2kg": [230, 45],
+                "2kg-5kg": [310, 55],
+                "5kg-10kg": [540, 97],
+            },
+            "D": {
+                "0-500g": [80, 15],
+                "500g-1kg": [150, 35],
+                "1kg-2kg": [230, 45],
+                "2kg-5kg": [310, 55],
+                "5kg-10kg": [540, 97],
+            },
+            "E": {
+                "0-500g": [80, 15],
+                "500g-1kg": [150, 35],
+                "1kg-2kg": [230, 45],
+                "2kg-5kg": [310, 55],
+                "5kg-10kg": [540, 97],
+            },
+            "F": {
+                "0-500g": [110, 25],
+                "500g-1kg": [200, 45],
+                "1kg-2kg": [340, 65],
+                "2kg-5kg": [400, 85],
+                "5kg-10kg": [640, 97],
+            }
         };
-        return fakeRateTable[key] || 99;
-      };
-  
-      // Total shipping charge
-      let totalCharge = 0;
-      for (const category of weightCategories) {
-        totalCharge += getShippingRate(zone, category, isCart);
-      }
-  
-      return res.json({
-        buyerPincode,
-        sellerPincode,
-        zone,
-        weightCategories,
-        shippingCharge: totalCharge
-      });
-  
+
+        const zoneData = pricingTable[deliveryZone] || pricingTable["F"];
+        const [shippingCharge, convenienceCharge] = zoneData[weightSlab];
+
+        return res.json({
+            sellerPincode,
+            buyerPincode,
+            deliveryZone,
+            weight: `${weight}g`,
+            weightSlab,
+            shippingCharge,
+            convenienceCharge,
+            totalCharge: shippingCharge + convenienceCharge
+        });
+
     } catch (err) {
-      console.error("Shipping calc error:", err.response?.data || err.message);
-      return res.status(500).json({ message: "Internal server error" });
+        console.error("Error in calculate-shipping-charge:", err.response?.data || err.message);
+        res.status(500).json({ message: "Something went wrong while calculating shipping charge." });
     }
-  });  
+});
+
 
 module.exports = router;

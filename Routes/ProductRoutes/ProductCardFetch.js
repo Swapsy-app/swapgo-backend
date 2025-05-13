@@ -3,6 +3,7 @@ const Product = require("../../Models/ProductModels/Product");
 const User = require("../../Models/User");
 const router = express.Router();
 
+//fetch product card with filter, sort and search
 router.get("/products-card-fetch", async (req, res) => {
   try {
     let { page = 1, sort, priceType, minPrice, maxPrice, search, ...filters } = req.query;
@@ -10,7 +11,7 @@ router.get("/products-card-fetch", async (req, res) => {
     const limit = 15;
     const skip = (page - 1) * limit;
 
-    let query = { status: { $ne: "unavailable" } };
+    let query = { status: { $in: ["available", "sold"] } };
 
     // Apply filters
     if (filters.status) {
@@ -75,9 +76,6 @@ router.get("/products-card-fetch", async (req, res) => {
         ]
       };
     }
-    
-    
-
     // Apply price range filter based on priceType and ensure non-empty values
     if (priceType && ["cash", "coin", "mix"].includes(priceType)) {
       let priceField;
@@ -145,24 +143,61 @@ router.get("/products-card-fetch", async (req, res) => {
       }
     }
 
-    // Fetch products
+    // Dynamic sort object
+    let sortObj = {
+      isLowView: -1,
+      isNew: -1,
+      random: 1,
+      createdAt: -1
+    };
+
+    if (sort) {
+      const direction = sort.includes("lowToHigh") ? 1 : -1;
+
+      if (sort.includes("views")) {
+        sortObj = { views: direction };
+      } else if (priceType === "cash" && sort.includes("price")) {
+        sortObj = { "price.cash.enteredAmount": direction };
+      } else if (priceType === "coin" && sort.includes("price")) {
+        sortObj = { "price.coin.enteredAmount": direction };
+      } else if (priceType === "mix" && sort.includes("price")) {
+        // Sorting by total value of mix price (enteredCash + enteredCoin)
+        sortObj = {
+          $add: [
+            { $ifNull: ["$price.mix.enteredCash", 0] },
+            { $ifNull: ["$price.mix.enteredCoin", 0] }
+          ]
+        };
+      }
+    }
+    
+    // Fetch products with aggregation
     const products = await Product.aggregate([
       { $match: query },
-      { $addFields: { random: { $rand: {} } } }, // Add a random field
+      { $addFields: { random: { $rand: {} } } },
       {
         $addFields: {
-          isNew: { $gte: ["$createdAt", new Date(Date.now() - 3 * 7 * 24 * 60 * 60 * 1000)] }, // Products added within last 3 weeks
-          isLowView: { $lt: ["$views", 100] } // Products with less than 100 views
+          isNew: {
+            $gte: ["$createdAt", new Date(Date.now() - 3 * 7 * 24 * 60 * 60 * 1000)]
+          },
+          isLowView: { $lt: ["$views", 100] }
         }
       },
-      {
-        $sort: {
-          isLowView: -1, // Prioritize low-view products
-          isNew: -1, // Prioritize new products
-          random: 1, // Sort by random field
-          createdAt: -1 // Sort by creation date
-        }
-      }
+      ...(sort && priceType === "mix" && sort.includes("price") ? [
+        {
+          $addFields: {
+            mixTotal: {
+              $add: [
+                { $ifNull: ["$price.mix.enteredCash", 0] },
+                { $ifNull: ["$price.mix.enteredCoin", 0] }
+              ]
+            }
+          }
+        },
+        { $sort: { mixTotal: sort.includes("lowToHigh") ? 1 : -1 } }
+      ] : [
+        { $sort: sortObj }
+      ])
     ]);
 
     // Separate products into high-view and low-view sets
