@@ -19,7 +19,6 @@ const orderSchema = new mongoose.Schema(
         shippingCharge: { type: Number, required: true, default: 0 },
         convenienceCharge: { type: Number, required: true, default: 0 },
         weight: { type: String, required: true },
-
         // 📌 Snapshot from Product
         fullPrice: {
           mrp: { type: Number, required: true },
@@ -46,27 +45,31 @@ const orderSchema = new mongoose.Schema(
 
     paymentStatus: {
       type: String,
-      enum: ["pending", "completed", "refunded", "cancelled"],
+      enum: ["pending", "completed", "refunded", "cancelled", "failed"],
       required: true,
       default: "pending"
     },
-
+    
+//unlocked enum mean product is ordered successfully
     orderStatus: {
       type: String,
-      enum: ["pending", "pickup_confirmed", "shipped", "delivered", "cancelled"],
+      enum: ["pending", "unlocked", "pickup_confirmed", "shipped", "delivered", "cancelled", "failed", "delivery_not_accepted", "returned"],
       required: true,
       default: "pending"
     },
 
     issueStatus: {
       type: String,
-      enum: ["none", "requested", "approved", "rejected"],
+      enum: ["none", "raised", "permanently_closed", "ongoing"],
       default: "none"
     },
 
-    issueResolution: {
-      type: String
-    },
+issueId: { 
+  type: mongoose.Schema.Types.ObjectId, 
+  ref: "Issue", 
+  index: true 
+},
+
 
     paymentMode: {
       type: String,
@@ -78,9 +81,22 @@ const orderSchema = new mongoose.Schema(
       type: String
     },
 
-    deliveryPrtner: { type: String},
-    deliveryAWB: { type: String},
-    deliveryoption: { type: String},
+deliveryInfo: {
+  awb: { type: String },
+  shipmentType: {
+    type: String,
+    enum: ['forward', 'reverse', 'custom'], // 'custom' = user enters AWB manually
+  },
+  deliveryPartner: {
+    type: String,
+    default: 'delhivery',
+    enum: ['delhivery', 'shiprocket', 'ekart', 'custom'] // you can expand this list in future
+  },
+  shippingLabelUrl: { type: String },
+  pickupScheduled: { type: Boolean, default: false },
+  pickupDate: { type: String },
+  pickupTime: { type: String }
+},
 
     transactionId: {
       type: String,
@@ -96,7 +112,7 @@ const orderSchema = new mongoose.Schema(
     totalconvenienceCharge: { type: Number, required: true },
     codCharge: { type: Number, default: 0 },
 
-    // 🔹 Payment breakdown before coin purchase and the amount that need to be paid to seller
+    // total cash amount to be paid by buyer only for products not coins or other things like shipping, conv etc.
     productCashPaid: { type: Number, required: true, default: 0 },
 
     // 🔹 If user bought coins on the order page

@@ -2,8 +2,12 @@ const express = require("express");
 const router = express.Router();
 const authenticateToken = require("../../Modules/authMiddleware");
 const Product = require("../../Models/ProductModels/Product");
-const CoinWallet = require("../../Models/CoinWalletModels/Coin"); // Adjust path if needed
-
+const CoinWallet = require("../../Models/CoinWalletModels/Coin"); 
+const CoinTransaction = require("../../Models/CoinWalletModels/CoinTrans");
+const Order = require("../../Models/ProductOrder/ProductOrder");
+const User = require("../../Models/User");
+const mongoose = require("mongoose");
+const Address = require("../../Models/ProductModels/address");
 
 // Coin pricing tiers
 const getCoinBuyRate = (coins) => {
@@ -175,5 +179,246 @@ router.get("/product-price-details", authenticateToken, async (req, res) => {
   }
 });
 
+// product order creation 2nd route non cashfree
+router.post("/create-order", authenticateToken, async (req, res) => {
+  const session = await mongoose.startSession();
+  try {
+    session.startTransaction();
+
+    const buyerId = req.user._id;
+    const {
+      productIds,
+      paymentMode,
+      paymentPrepaidType,
+      deliveryAddressId,
+      totalShippingDiscount,
+      totalShippingCharge,
+      totalconvenienceCharge,
+      productCashPaid,
+      totalCashPaid,
+      totalCoinPaid,
+      coinPurchase,
+      frontendCharges,
+    } = req.body;
+
+    if (!productIds || !Array.isArray(productIds) || productIds.length === 0 || productIds.length > 5) {
+      return res.status(400).json({ error: "Invalid product list." });
+    }
+
+    const buyer = await User.findById(buyerId).lean();
+    if (!buyer) return res.status(400).json({ error: "Buyer id missing." });
+
+    const products = await Product.find({ _id: { $in: productIds } }).session(session);
+    if (products.length !== productIds.length) {
+      return res.status(400).json({ error: "One or more products not found." });
+    }
+
+    const orderProducts = [];
+    for (const prod of products) {
+      if (prod.quantity === 0 || prod.status === "sold") {
+        return res.status(400).json({ error: `Product ${prod._id} is sold.` });
+      }
+
+      const charges = frontendCharges.find(p => p.productId === String(prod._id));
+      if (!charges) {
+        return res.status(400).json({ error: `Frontend charges missing for product ${prod._id}` });
+      }
+
+      const priceMode = prod.price.cash?.enteredAmount ? "cash"
+                      : prod.price.coin?.enteredAmount ? "coin"
+                      : "mix";
+
+      orderProducts.push({
+        productId: prod._id,
+        sellerId: prod.sellerId,
+        quantity: 1,
+        priceMode,
+        shippingCharge: charges.shippingCharge,
+        convenienceCharge: charges.convenienceCharge,
+        weight: prod.weight.toString(),
+        fullPrice: prod.price,
+        title: prod.title,
+        condition: prod.condition,
+        gstNumber: buyer.gstNumber,
+        pickupAddressId: prod.pickupAddress,
+      });
+
+      prod.quantity -= 1;
+      prod.quantitySold += 1;
+      if (prod.quantity === 0) prod.status = "sold";
+      await prod.save({ session });
+    }
+
+    const pickupAddressId = orderProducts[0].pickupAddressId;
+
+    const newOrder = new Order({
+      buyerId,
+      products: orderProducts,
+      paymentMode,
+      paymentPrepaidType,
+      deliveryAddressId,
+      pickupAddressId,
+      totalShippingDiscount,
+      totalShippingCharge,
+      totalconvenienceCharge,
+      productCashPaid,
+      totalCashPaid,
+      totalCoinPaid,
+      coinPurchase,
+      paymentStatus: "pending",
+      orderStatus: "pending"
+    });
+
+    await newOrder.save({ session });
+
+    // 💰 Deduct coins from wallet
+    const coinWallet = await CoinWallet.findOne({ userId: buyerId }).session(session);
+    const coinsToDeduct = totalCoinPaid - (coinPurchase || 0);
+
+    const deducted = {
+      earned: 0,
+      reward: 0,
+      bought: 0,
+      borrowed: 0
+    };
+
+    if (coinsToDeduct > 0) {
+      let remaining = coinsToDeduct;
+
+      const totalAvailable = coinWallet.earnedCoinBalance +
+                             coinWallet.rewardCoinBalance +
+                             coinWallet.boughtCoinBalance +
+                             coinWallet.borrowedCoinBalance;
+
+      const usable = totalAvailable - coinWallet.blockedCoins;
+
+      if (coinsToDeduct > usable) {
+        throw new Error("Insufficient usable coins to deduct.");
+      }
+
+      if (coinWallet.earnedCoinBalance >= remaining) {
+        coinWallet.earnedCoinBalance -= remaining;
+        deducted.earned = remaining;
+        remaining = 0;
+      } else {
+        deducted.earned = coinWallet.earnedCoinBalance;
+        remaining -= coinWallet.earnedCoinBalance;
+        coinWallet.earnedCoinBalance = 0;
+      }
+
+      if (remaining > 0) {
+        if (coinWallet.rewardCoinBalance >= remaining) {
+          coinWallet.rewardCoinBalance -= remaining;
+          deducted.reward = remaining;
+          remaining = 0;
+        } else {
+          deducted.reward = coinWallet.rewardCoinBalance;
+          remaining -= coinWallet.rewardCoinBalance;
+          coinWallet.rewardCoinBalance = 0;
+        }
+      }
+
+      if (remaining > 0) {
+        if (coinWallet.boughtCoinBalance >= remaining) {
+          coinWallet.boughtCoinBalance -= remaining;
+          deducted.bought = remaining;
+          remaining = 0;
+        } else {
+          deducted.bought = coinWallet.boughtCoinBalance;
+          remaining -= coinWallet.boughtCoinBalance;
+          coinWallet.boughtCoinBalance = 0;
+        }
+      }
+
+      if (remaining > 0) {
+        coinWallet.borrowedCoinBalance -= remaining;
+        deducted.borrowed = remaining;
+        remaining = 0;
+      }
+
+      await coinWallet.save({ session });
+
+      await CoinTransaction.create([{
+        userId: buyerId,
+        orderId: newOrder._id,
+        coinAmount: coinsToDeduct,
+        type: "debit",
+        description: "Coins spent for product purchase"
+      }], { session });
+    }
+
+    if (coinPurchase && coinPurchase > 0) {
+      coinWallet.boughtCoinBalance += coinPurchase;
+      await coinWallet.save({ session });
+
+      await CoinTransaction.create([{
+        userId: buyerId,
+        orderId: newOrder._id,
+        coinAmount: coinPurchase,
+        type: "credit",
+        description: "Coins bought for product purchase"
+      }], { session });
+    }
+
+    // ⏳ Fail order & refund coins after 10 minutes if still pending
+    setTimeout(async () => {
+      const order = await Order.findById(newOrder._id);
+      if (!order || order.paymentStatus !== "pending") return;
+
+      order.paymentStatus = "failed";
+      order.orderStatus = "failed";
+      await order.save();
+
+      for (const item of order.products) {
+        const product = await Product.findById(item.productId);
+        if (product) {
+          product.quantity += 1;
+          product.quantitySold = Math.max(0, product.quantitySold - 1);
+          if (product.status === "sold") product.status = "available";
+          await product.save();
+        }
+      }
+
+      const wallet = await CoinWallet.findOne({ userId: order.buyerId });
+      if (!wallet) return;
+
+      if (totalCoinPaid > 0) {
+        wallet.earnedCoinBalance += deducted.earned;
+        wallet.rewardCoinBalance += deducted.reward;
+        wallet.boughtCoinBalance += deducted.bought;
+        wallet.borrowedCoinBalance += deducted.borrowed;
+
+        await wallet.save();
+
+        await CoinTransaction.create([{
+          userId: order.buyerId,
+          orderId: order._id,
+          coinAmount: coinsToDeduct,
+          type: "credit",
+          description: "Coin refund for failed transaction"
+        }]);
+
+        if (coinPurchase > 0) {
+          await CoinTransaction.create([{
+            userId: order.buyerId,
+            orderId: order._id,
+            coinAmount: coinPurchase,
+            type: "debit",
+            description: "Coin purchase reverted due to transaction failure"
+          }]);
+        }
+      }
+    }, 10 * 60 * 1000);
+
+    await session.commitTransaction();
+    session.endSession();
+    return res.status(201).json({ success: true, orderId: newOrder._id });
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    console.error("Order creation failed:", error);
+    return res.status(500).json({ error: "Failed to create order." });
+  }
+});
 
 module.exports = router;

@@ -12,6 +12,11 @@ const userSchema = new mongoose.Schema({
     gender: { type: String },
     occupation: { type: String},
     holidayMode: { type: Boolean, default: false }, // Track holiday mode
+    codEnabled: { type: Boolean, default: false }, // COD enabled by default
+    codeligibleasrbuyer: { type: Boolean, default: true }, // COD eligible by default
+    badge:{type: String},
+    sellerRating: { type: Number, default: 0 },
+    modifiedSellerRating: { type: Number, default: 0 },
     gst: {
         type: String,
         unique: true,

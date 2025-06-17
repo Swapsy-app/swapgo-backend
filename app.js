@@ -10,6 +10,7 @@ const searchRoutes = require('./Routes/UserSearchRoute');
 const communityRouter=require("./Routes/communityRoutes");
 const userRouter=require("./Routes/UserRoutes");
 const reportUserRoute=require("./Routes/ReportUserRoute");
+const reportProductRoute=require("./Routes/ReportProduct");
 const userAddressRoutes=require("./Routes/UserAddressRoutes");
 const productRoutes=require("./Routes/ProductRoutes/ProductRoutes");
 const productCardRoutes=require("./Routes/ProductRoutes/ProductCardFetch");
@@ -28,9 +29,21 @@ const PaymentWebHook = require("./Routes/PaymentRoutes/PaymentWebhook");
 const BorrowCoinRefundRoute = require("./Routes/CoinWalletFeatures/BorrowCoinRefundRoute");
 const SellCoinRoute = require("./Routes/CoinWalletFeatures/SellCoinRoute");
 const ProductOrderReview = require("./Routes/ProductOrder/ProductOrderReview");
+const cashOnDelivery = require("./Routes/SellerFeatureRoutes/cash_on_delivery");
+const issue = require("./Routes/issueRoutes/issueRoutes");
+const orderconfirm = require("./Routes/ProductOrder/sellerorderconfirm");
+const deliveryschedule = require("./Routes/ProductOrder/deliveryshipmentcreation");
+const rating_review = require("./Routes/ProductOrder/seller_rating");
+const buyerorder = require("./Routes/ProductOrder/buyerorderslist");
+const ordertrack = require("./Routes/ProductOrder/ordertracking");
+const orderstatusupdate = require("./Routes/ProductOrder/orderstatusupdate");
+
+// Importing the cron job for updating shipment status based on delhivery tracking
+const cronupdateship = require("./Modules/updateShipmentStatus");
 
 const AdminAuth = require("./Routes/AdminRoutes/AdminAuth/AdminUser");
 const AdminSellCoin = require("./Routes/AdminRoutes/SellApprove/SellAproveRoute");
+const AdminIssue = require("./Routes/AdminRoutes/issuehandle/issuehandle");
 
 const app=express();
 const server = require('http').createServer(app);
@@ -47,6 +60,7 @@ app.use("/api/userprofile",profileRoutes);
 app.use("/api/searchuser",searchRoutes); 
 app.use("/api/community",communityRouter); 
 app.use("/api/reportuser",reportUserRoute);
+app.use("/api/reportproduct",reportProductRoute);
 app.use("/api/useraddress",userAddressRoutes);
 app.use("/api/productsell",productRoutes);
 app.use("/api/productcard",productCardRoutes);
@@ -65,7 +79,17 @@ app.use("/api/paymentwebhook", PaymentWebHook);
 app.use("/api/borrowcoinrefund", BorrowCoinRefundRoute);
 app.use("/api/sellcoin", SellCoinRoute);
 app.use("/api/productorder", ProductOrderReview);
+app.use("/api/cashondelivery", cashOnDelivery);
+app.use("/api/issue", issue);
+app.use("/api/orderconfirm", orderconfirm);
+app.use("/api/deliveryschedule", deliveryschedule);
+app.use("/api/rate", rating_review);
+app.use("/api/buyerorder", buyerorder);
+app.use("/api/ordertrack", ordertrack);
+app.use("/api/orderstatusupdate", orderstatusupdate);
 
+
+app.use("/adm/admissue", AdminIssue);
 app.use("/adm/admuser", AdminAuth);
 app.use("/adm/sellcoin", AdminSellCoin);
 
@@ -77,9 +101,6 @@ app.get("/",(req,res)=>{
 
 // Setup WebSocket
 setupWebSocket(server);
-
-//testing for email message 
-//sendEmail("himanshudey19@gmail.com","Hello","Hello");
  
 server.listen(process.env.PORT,()=>{
     console.log(`Server is running on port http://localhost:${process.env.PORT}`);

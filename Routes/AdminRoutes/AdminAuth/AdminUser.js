@@ -128,7 +128,7 @@ router.post("/login-admin", async (req, res) => {
     }
 });
 
-// 3️⃣ Verify OTP & Generate Tokens
+
 // 3️⃣ Verify OTP & Generate Tokens
 router.post("/verify-otp", async (req, res) => {
     try {
@@ -170,7 +170,6 @@ router.post("/verify-otp", async (req, res) => {
 });
 
 
-// 4️⃣ Refresh Token to Get New Access Token
 // 4️⃣ Refresh Token to Get New Access Token
 router.post("/refresh-token", async (req, res) => {
     try {

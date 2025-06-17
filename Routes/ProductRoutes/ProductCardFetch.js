@@ -1,17 +1,134 @@
 const express = require("express");
 const Product = require("../../Models/ProductModels/Product");
 const User = require("../../Models/User");
+
+const axios = require("axios");
+const jwt = require('jsonwebtoken');
+const Address = require("../../Models/ProductModels/address"); // Import User model 
+
+const WishlistItem = require("../../Models/ProductModels/wishlist")
 const router = express.Router();
+const mongoose = require('mongoose');
 
-//fetch product card with filter, sort and search
+
+// Utility function to normalize zone (D1, D2 → D, etc.)
+const normalizeZone = (zone) => {
+    if (zone && /^[A-F]\d*$/.test(zone)) {
+        return zone.charAt(0); // Extract only the first letter
+    }
+    return "F"; // Default zone if invalid
+};
+
+
+// Helper function to calculate delivery days for a product
+async function calculateDeliveryDays(productId, buyerPincode) {
+    try {
+        // Fetch product's pickup address (seller's pincode)
+        const product = await Product.findById(productId).select("pickupAddress");
+        if (!product || !product.pickupAddress) {
+            return 9; // Default to maximum days if pickup address not found
+        }
+
+        const pickupAddress = await Address.findById(product.pickupAddress).select("pincode");
+        if (!pickupAddress || !pickupAddress.pincode) {
+            return 9; // Default to maximum days if seller pincode not found
+        }
+        const sellerPincode = pickupAddress.pincode;
+
+        // Call Delhivery API for zone estimation
+        const zoneResponse = await axios.get("https://track.delhivery.com/api/kinko/v1/invoice/charges/.json", {
+            params: {
+                md: "S",
+                o_pin: sellerPincode,
+                d_pin: buyerPincode,
+                cgm: 500, // Default chargeable weight
+                ss: "DTO"
+            },
+            headers: {
+                "Authorization": `Token ${process.env.DELHIVERY_API_KEY}`,
+                "Accept": "application/json"
+            }
+        });
+
+        // Extract and normalize zone
+        let deliveryZone = "F"; // Default
+        if (zoneResponse.data && Array.isArray(zoneResponse.data) && zoneResponse.data.length > 0) {
+            const zoneData = zoneResponse.data[0];
+            if (zoneData.zone) {
+                deliveryZone = normalizeZone(zoneData.zone.trim());
+            }
+        }
+
+        // Determine estimated delivery days based on zone
+        const zoneDaysMapping = {
+            "A": 5,
+            "B": 7,
+            "C": 9,
+            "D": 9,
+            "E": 9,
+            "F": 9
+        };
+        return zoneDaysMapping[deliveryZone] || 9;
+
+    } catch (error) {
+        console.error("Error calculating delivery days:", error);
+        return 9; // Default to maximum days on error
+    }
+}
+
+// Helper function to process size object
+function processSize(size) {
+    if (!size) return null;
+    
+    const attributes = size.attributes || [];
+    const freeSize = size.freeSize || false;
+    const sizeString = size.sizeString || null;
+    
+    // Return null if attributes is empty, freeSize is false, and sizeString is null
+    if (attributes.length === 0 && freeSize === false && sizeString === null) {
+        return null;
+    }
+    
+    return size;
+}
+
+// Create a cache to store already sent product IDs
+const sentProductsCache = new Set();
 router.get("/products-card-fetch", async (req, res) => {
-  try {
-    let { page = 1, sort, priceType, minPrice, maxPrice, search, ...filters } = req.query;
-    page = parseInt(page);
-    const limit = 15;
-    const skip = (page - 1) * limit;
+    try {
+        let { page = 1, sort, priceType, minPriceCash, maxPriceCash, minPriceCoin, maxPriceCoin, search, limit = 15, seed, resetCache, ...filters } = req.query;
+        page = parseInt(page);
+        limit = parseInt(limit);
+        const skip = (page - 1) * limit;
 
-    let query = { status: { $in: ["available", "sold"] } };
+        // Reset cache if requested or when it's a new search/filter
+        if (resetCache === 'true' || page === 1) {
+            sentProductsCache.clear();
+        }
+
+        // Generate or use provided seed for consistent randomization
+        const currentSeed = seed ? parseInt(seed) : Math.floor(Math.random() * 1000000);
+
+        // Get user ID and buyer pincode if authenticated
+        const userId = req.query.userId;
+        let buyerPincode = null;
+        
+        if (req.headers.authorization) {
+            try {
+                const token = req.headers.authorization.split(" ")[1];
+                const decoded = jwt.verify(token, process.env.JWT_TOKEN);
+                const defaultAddress = await Address.findOne({ userId: decoded.id, defaultAddress: true });
+                if (defaultAddress && defaultAddress.pincode) {
+                    buyerPincode = defaultAddress.pincode;
+                }
+            } catch (error) {
+                console.warn("Invalid or expired token, proceeding without user info.");
+                console.warn(error.message);
+
+            }
+        }
+
+        let query = { status: { $ne: "unavailable" } };
 
     // Apply filters
     if (filters.status) {
@@ -22,246 +139,334 @@ router.get("/products-card-fetch", async (req, res) => {
       const conditionList = filters.condition.split(",");
       query.condition = { $in: conditionList };
     }
-    if (filters.brand) query.brand = new RegExp(filters.brand, "i"); // Case-insensitive
+    if (filters.brand) query.brand = new RegExp(filters.brand, "i");
     if (filters.fabric) query.fabric = filters.fabric;
     if (filters.color) query.color = filters.color;
     if (filters.occasion) query.occasion = filters.occasion;
 
     // Size Filters
     if (filters.sizeString) query["size.sizeString"] = filters.sizeString;
-    if (filters.freeSize) query["size.freeSize"] = filters.freeSize === "true"; // Convert to boolean
+    if (filters.freeSize) query["size.freeSize"] = filters.freeSize === "true";
     if (filters.sizeAttributeName && filters.sizeAttributeValue) {
-      query["size.attributes"] = { 
-        $elemMatch: { 
-          name: filters.sizeAttributeName, 
-          value: filters.sizeAttributeValue 
-        } 
+      query["size.attributes"] = {
+        $elemMatch: {
+          name: filters.sizeAttributeName,
+          value: filters.sizeAttributeValue
+        }
       };
     }
 
-    // if (filters.primaryCategory) query["category.primaryCategory"] = new RegExp(filters.primaryCategory, "i"); // Case-insensitive
-    // if (filters.secondaryCategory) query["category.secondaryCategory"] = new RegExp(filters.secondaryCategory, "i"); // Case-insensitive
-    // if (filters.tertiaryCategory) query["category.tertiaryCategory"] = new RegExp(filters.tertiaryCategory, "i"); // Case-insensitive
-
+    // Category Filters
     if (filters.primaryCategory) {
-      const primaryCategories = filters.primaryCategory.split(",").map(cat => new RegExp(cat, "i"));
+      const primaryCategories = filters.primaryCategory.split(",").map(cat => new RegExp(`^${cat}$`, "i"));
       query["category.primaryCategory"] = { $in: primaryCategories };
     }
-    
     if (filters.secondaryCategory) {
       const secondaryCategories = filters.secondaryCategory.split(",").map(cat => new RegExp(cat, "i"));
       query["category.secondaryCategory"] = { $in: secondaryCategories };
     }
-    
     if (filters.tertiaryCategory) {
       const tertiaryCategories = filters.tertiaryCategory.split(",").map(cat => new RegExp(cat, "i"));
       query["category.tertiaryCategory"] = { $in: tertiaryCategories };
     }
-
     if (filters.combinedCategory) {
-      // Split the incoming comma-separated values, convert them to lowercase, and trim whitespace.
-      const combinedValues = filters.combinedCategory
-        .split(",")
-        .map(val => val.trim().toLowerCase());
-    
-      // Use $expr to compute a concatenated string from category.primaryCategory and category.tertiaryCategory
+      const combinedValues = filters.combinedCategory.split(",").map(v => v.trim().toLowerCase());
       query.$expr = {
         $in: [
-          {
-            $toLower: {
-              $concat: ["$category.primaryCategory", "_", "$category.tertiaryCategory"]
-            }
-          },
+          { $toLower: { $concat: ["$category.primaryCategory", "_", "$category.tertiaryCategory"] } },
           combinedValues
         ]
       };
     }
-    // Apply price range filter based on priceType and ensure non-empty values
-    if (priceType && ["cash", "coin", "mix"].includes(priceType)) {
-      let priceField;
 
-      if (priceType === "cash") {
-        priceField = "price.cash.enteredAmount";
-        query[priceField] = { $exists: true, $ne: null }; // Ensure cash amount exists
-        if (minPrice) query[priceField].$gte = parseFloat(minPrice);
-        if (maxPrice) query[priceField].$lte = parseFloat(maxPrice);
-      } else if (priceType === "coin") {
-        priceField = "price.coin.enteredAmount";
-        query[priceField] = { $exists: true, $ne: null }; // Ensure coin amount exists
-        if (minPrice) query[priceField].$gte = parseFloat(minPrice);
-        if (maxPrice) query[priceField].$lte = parseFloat(maxPrice);
-      } else if (priceType === "mix") {
-        // Ensure mixCash and mixCoin exist
-        query["$and"] = [
-          { "price.mix.enteredCash": { $exists: true, $ne: null } },
-          { "price.mix.enteredCoin": { $exists: true, $ne: null } }
-        ];
-
-        let mixCashConditions = {};
-        let mixCoinConditions = {};
-
-        if (req.query.minCashMix) mixCashConditions.$gte = parseFloat(req.query.minCashMix);
-        if (req.query.maxCashMix) mixCashConditions.$lte = parseFloat(req.query.maxCashMix);
-        if (req.query.minCoinMix) mixCoinConditions.$gte = parseFloat(req.query.minCoinMix);
-        if (req.query.maxCoinMix) mixCoinConditions.$lte = parseFloat(req.query.maxCoinMix);
-
-        let orConditions = [];
-        if (Object.keys(mixCashConditions).length > 0) {
-          orConditions.push({ "price.mix.enteredCash": mixCashConditions });
+    // Price Filters (cash, coin, mix)
+    if (priceType) {
+      const priceTypes = priceType.split(",");
+      
+      if (priceTypes.length === 1) {
+        // Single price type handling
+        if (priceTypes[0] === "cash") {
+          const pf = "price.cash.enteredAmount";
+          const cashConditions = { $exists: true, $ne: null };
+          
+          if (minPriceCash || maxPriceCash) {
+            if (minPriceCash) cashConditions.$gte = parseFloat(minPriceCash);
+            if (maxPriceCash) cashConditions.$lte = parseFloat(maxPriceCash);
+          }
+          
+          query[pf] = cashConditions;
+        } 
+        else if (priceTypes[0] === "coin") {
+          const pf = "price.coin.enteredAmount";
+          const coinConditions = { $exists: true, $ne: null };
+          
+          if (minPriceCoin || maxPriceCoin) {
+            if (minPriceCoin) coinConditions.$gte = parseFloat(minPriceCoin);
+            if (maxPriceCoin) coinConditions.$lte = parseFloat(maxPriceCoin);
+          }
+          
+          query[pf] = coinConditions;
+        } 
+        else if (priceTypes[0] === "mix") {
+          query.$and = [
+            { "price.mix.enteredCash": { $exists: true, $ne: null } },
+            { "price.mix.enteredCoin": { $exists: true, $ne: null } }
+          ];
+          
+          const mixFilters = [];
+          
+          if (req.query.minCashMix || req.query.maxCashMix) {
+            const cashMixConditions = {};
+            if (req.query.minCashMix) cashMixConditions.$gte = parseFloat(req.query.minCashMix);
+            if (req.query.maxCashMix) cashMixConditions.$lte = parseFloat(req.query.maxCashMix);
+            mixFilters.push({ "price.mix.enteredCash": cashMixConditions });
+          }
+          
+          if (req.query.minCoinMix || req.query.maxCoinMix) {
+            const coinMixConditions = {};
+            if (req.query.minCoinMix) coinMixConditions.$gte = parseFloat(req.query.minCoinMix);
+            if (req.query.maxCoinMix) coinMixConditions.$lte = parseFloat(req.query.maxCoinMix);
+            mixFilters.push({ "price.mix.enteredCoin": coinMixConditions });
+          }
+          
+          if (mixFilters.length > 0) {
+            query.$and.push({ $or: mixFilters });
+          }
         }
-        if (Object.keys(mixCoinConditions).length > 0) {
-          orConditions.push({ "price.mix.enteredCoin": mixCoinConditions });
+      } 
+      else {
+        // Multiple price types
+        const priceFilters = [];
+        
+        if (priceTypes.includes("cash")) {
+          const cashConditions = { $exists: true, $ne: null };
+          if (minPriceCash) cashConditions.$gte = parseFloat(minPriceCash);
+          if (maxPriceCash) cashConditions.$lte = parseFloat(maxPriceCash);
+          priceFilters.push({ "price.cash.enteredAmount": cashConditions });
         }
-
-        if (orConditions.length > 0) {
-          query["$and"].push({ $or: orConditions });
+        
+        if (priceTypes.includes("coin")) {
+          const coinConditions = { $exists: true, $ne: null };
+          if (minPriceCoin) coinConditions.$gte = parseFloat(minPriceCoin);
+          if (maxPriceCoin) coinConditions.$lte = parseFloat(maxPriceCoin);
+          priceFilters.push({ "price.coin.enteredAmount": coinConditions });
+        }
+        
+        if (priceTypes.includes("mix")) {
+          const mixFilter = {
+            $and: [
+              { "price.mix.enteredCash": { $exists: true, $ne: null } },
+              { "price.mix.enteredCoin": { $exists: true, $ne: null } }
+            ]
+          };
+          
+          const mixConditions = [];
+          
+          if (req.query.minCashMix || req.query.maxCashMix) {
+            const cashMixConditions = {};
+            if (req.query.minCashMix) cashMixConditions.$gte = parseFloat(req.query.minCashMix);
+            if (req.query.maxCashMix) cashMixConditions.$lte = parseFloat(req.query.maxCashMix);
+            mixConditions.push({ "price.mix.enteredCash": cashMixConditions });
+          }
+          
+          if (req.query.minCoinMix || req.query.maxCoinMix) {
+            const coinMixConditions = {};
+            if (req.query.minCoinMix) coinMixConditions.$gte = parseFloat(req.query.minCoinMix);
+            if (req.query.maxCoinMix) coinMixConditions.$lte = parseFloat(req.query.maxCoinMix);
+            mixConditions.push({ "price.mix.enteredCoin": coinMixConditions });
+          }
+          
+          if (mixConditions.length > 0) {
+            mixFilter.$and.push({ $or: mixConditions });
+          }
+          
+          priceFilters.push(mixFilter);
+        }
+        
+        if (priceFilters.length > 0) {
+          query.$or = priceFilters;
         }
       }
     }
 
-    // Search feature
+    // Search
     if (search) {
-      const searchWords = search.trim().split(/\s+/);
-
-      // First Attempt: Full-Text Search (If Indexed)
-      query["$text"] = { $search: search };
-
-      // Count matching documents (To check if $text search works)
-      const textMatchCount = await Product.countDocuments(query);
-
-      // If no results from full-text, use regex fallback
-      if (textMatchCount === 0) {
-        delete query["$text"]; // Remove conflicting $text search
-
-        query["$or"] = searchWords.flatMap(word => [
-          { title: { $regex: new RegExp(word, "i") } },
-          { brand: { $regex: new RegExp(word, "i") } },
-          { "category.primaryCategory": { $regex: new RegExp(word, "i") } },
-          { "category.secondaryCategory": { $regex: new RegExp(word, "i") } },
-          { "category.tertiaryCategory": { $regex: new RegExp(word, "i") } }
+      const words = search.trim().split(/\s+/);
+      query.$text = { $search: search };
+      const count = await Product.countDocuments(query);
+      if (!count) {
+        delete query.$text;
+        query.$or = words.flatMap(w => [
+          { title: { $regex: new RegExp(w, "i") } },
+          { brand: { $regex: new RegExp(w, "i") } },
+          { "category.primaryCategory": { $regex: new RegExp(w, "i") } },
+          { "category.secondaryCategory": { $regex: new RegExp(w, "i") } },
+          { "category.tertiaryCategory": { $regex: new RegExp(w, "i") } }
         ]);
       }
     }
 
-    // Dynamic sort object
-    let sortObj = {
-      isLowView: -1,
-      isNew: -1,
-      random: 1,
-      createdAt: -1
-    };
-
-    if (sort) {
-      const direction = sort.includes("lowToHigh") ? 1 : -1;
-
-      if (sort.includes("views")) {
-        sortObj = { views: direction };
-      } else if (priceType === "cash" && sort.includes("price")) {
-        sortObj = { "price.cash.enteredAmount": direction };
-      } else if (priceType === "coin" && sort.includes("price")) {
-        sortObj = { "price.coin.enteredAmount": direction };
-      } else if (priceType === "mix" && sort.includes("price")) {
-        // Sorting by total value of mix price (enteredCash + enteredCoin)
-        sortObj = {
-          $add: [
-            { $ifNull: ["$price.mix.enteredCash", 0] },
-            { $ifNull: ["$price.mix.enteredCoin", 0] }
-          ]
-        };
-      }
-    }
-    
-    // Fetch products with aggregation
-    const products = await Product.aggregate([
-      { $match: query },
-      { $addFields: { random: { $rand: {} } } },
-      {
-        $addFields: {
-          isNew: {
-            $gte: ["$createdAt", new Date(Date.now() - 3 * 7 * 24 * 60 * 60 * 1000)]
-          },
-          isLowView: { $lt: ["$views", 100] }
+    // Exclude already sent products
+        if (sentProductsCache.size > 0) {
+            const sentIds = Array.from(sentProductsCache).map(id => new mongoose.Types.ObjectId(id));
+            query._id = { $nin: sentIds };
         }
-      },
-      ...(sort && priceType === "mix" && sort.includes("price") ? [
-        {
-          $addFields: {
-            mixTotal: {
-              $add: [
-                { $ifNull: ["$price.mix.enteredCash", 0] },
-                { $ifNull: ["$price.mix.enteredCoin", 0] }
-              ]
+
+        // Count total products for pagination
+        const totalProducts = await Product.countDocuments(query);
+
+        // Get all product IDs that match the query
+        let productsQuery = Product.find(query).select('_id createdAt price');
+        
+        // Apply sorting based on sort parameter
+        let shuffledIds;
+        
+        if (sort === 'fastest-delivery' && buyerPincode) {
+            // Handle fastest delivery sorting (existing implementation)
+            const allProductIds = await productsQuery.lean();
+            const productsWithDeliveryDays = await Promise.all(
+                allProductIds.map(async (product) => {
+                    const deliveryDays = await calculateDeliveryDays(product._id, buyerPincode);
+                    return {
+                        _id: product._id.toString(),
+                        deliveryDays
+                    };
+                })
+            );
+            
+            productsWithDeliveryDays.sort((a, b) => a.deliveryDays - b.deliveryDays);
+            shuffledIds = productsWithDeliveryDays.map(p => p._id);
+        } else {
+            // Handle other sorting options
+            let sortedProducts;
+            
+            switch (sort) {
+                case 'newest':
+                    sortedProducts = await productsQuery.sort({ createdAt: -1 }).lean();
+                    break;
+                case 'oldest':
+                    sortedProducts = await productsQuery.sort({ createdAt: 1 }).lean();
+                    break;
+                case 'priceCashAsc':
+                    sortedProducts = await productsQuery.sort({ 'price.cash.enteredAmount': 1 }).lean();
+                    break;
+                case 'priceCashDesc':
+                    sortedProducts = await productsQuery.sort({ 'price.cash.enteredAmount': -1 }).lean();
+                    break;
+                case 'priceCoinAsc':
+                    sortedProducts = await productsQuery.sort({ 'price.coin.enteredAmount': 1 }).lean();
+                    break;
+                case 'priceCoinDesc':
+                    sortedProducts = await productsQuery.sort({ 'price.coin.enteredAmount': -1 }).lean();
+                    break;
+                default:
+                    // Default randomized sorting
+                    const allProductIds = await productsQuery.lean();
+                    const deterministicShuffle = (array, seed) => {
+                        const seededRandom = (max, min = 0) => {
+                            seed = (seed * 9301 + 49297) % 233280;
+                            return min + (seed / 233280) * (max - min);
+                        };
+                        
+                        const result = [...array];
+                        for (let i = result.length - 1; i > 0; i--) {
+                            const j = Math.floor(seededRandom(i + 1));
+                            [result[i], result[j]] = [result[j], result[i]];
+                        }
+                        return result;
+                    };
+                    
+                    shuffledIds = deterministicShuffle(allProductIds.map(p => p._id.toString()), currentSeed);
+                    break;
             }
-          }
-        },
-        { $sort: { mixTotal: sort.includes("lowToHigh") ? 1 : -1 } }
-      ] : [
-        { $sort: sortObj }
-      ])
-    ]);
+            
+            if (sortedProducts) {
+                shuffledIds = sortedProducts.map(p => p._id.toString());
+            }
+        }
+        
+        // Get the IDs for the current page
+        const pageIds = shuffledIds.slice(0, limit).map(id => new mongoose.Types.ObjectId(id));
+        
+        // Add these IDs to the sent products cache
+        pageIds.forEach(id => sentProductsCache.add(id.toString()));
+        
+        // Fetch the full products for this page
+        const paginatedProducts = await Product.find({ _id: { $in: pageIds } })
+            .populate('sellerId', '_id username avatar')
+            .lean();
+        
+        // Sort the products to match the order of the shuffled IDs
+        const idToIndexMap = {};
+        pageIds.forEach((id, index) => {
+            idToIndexMap[id.toString()] = index;
+        });
+        
+        paginatedProducts.sort((a, b) => {
+            return idToIndexMap[a._id.toString()] - idToIndexMap[b._id.toString()];
+        });
+        
+        // Format the products with delivery information
+        const formatted = await Promise.all(paginatedProducts.map(async (p) => {
+            // Check if product is wishlisted by current user
+            let isWishlisted = false;
+            if (userId) {
+                const wishlistItem = await WishlistItem.findOne({ 
+                    userId, 
+                    productId: p._id 
+                });
+                isWishlisted = !!wishlistItem;
+            }
+            
+            // Calculate delivery days for display (if buyer pincode available)
+            let estimatedDeliveryDays = null;
+            if (buyerPincode) {
+                estimatedDeliveryDays = await calculateDeliveryDays(p._id, buyerPincode);
+            }
+            
+            return {
+                _id: p._id,
+                images: p.images?.length ? [p.images[0]] : [],
+                brand: p.brand || null,
+                title: p.title,
+                size: processSize(p.size),
+                price: {
+                    mrp: p.price.mrp,
+                    cashPrice: p.price.cash?.enteredAmount,
+                    coinPrice: p.price.coin?.enteredAmount,
+                    mixPrice: p.price.mix?.enteredCash && p.price.mix?.enteredCoin
+                              ? { enteredCash: p.price.mix.enteredCash, enteredCoin: p.price.mix.enteredCoin }
+                              : null,
+                    sellerReceivesCash: p.price.cash?.sellerReceivesCash || 0,
+                    sellerReceivesCoin: p.price.coin?.sellerReceivesCoin || 0,
+                    sellerReceivesmixCoin: p.price.mix?.sellerReceivesCoin || 0,
+                    sellerReceivesmixCash: p.price.mix?.sellerReceivesCash || 0
+                },
+                seller: {
+                    _id: p.sellerId?._id || p.sellerId || "",
+                    username: p.sellerId?.username || "Unknown",
+                    avatar: p.sellerId?.avatar || null
+                },
+                views: p.views,
+                isWishlisted: isWishlisted,
+                estimatedDeliveryDays: estimatedDeliveryDays
+            };
+        }));
 
-    // Separate products into high-view and low-view sets
-    const lowViewProducts = products.filter(product => product.isLowView);
-    const highViewProducts = products.filter(product => !product.isLowView);
-
-    // Shuffle each set
-    const shuffleArray = (array) => array.sort(() => Math.random() - 0.5);
-    const shuffledLowViewProducts = shuffleArray(lowViewProducts);
-    const shuffledHighViewProducts = shuffleArray(highViewProducts);
-
-    // Mix the sets in the desired ratio (70% low-view, 30% high-view)
-    const mixedProducts = [];
-    const lowViewCount = Math.ceil(0.7 * limit);
-    const highViewCount = limit - lowViewCount;
-
-    for (let i = 0; i < lowViewCount && i < shuffledLowViewProducts.length; i++) {
-      mixedProducts.push(shuffledLowViewProducts[i]);
+        res.json({
+            success: true,
+            page,
+            limit,
+            totalPages: Math.ceil(totalProducts / limit),
+            totalProducts,
+            products: formatted,
+            seed: currentSeed,
+            remainingProducts: totalProducts,
+            sortedBy: sort || 'default'
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
     }
-    for (let i = 0; i < highViewCount && i < shuffledHighViewProducts.length; i++) {
-      mixedProducts.push(shuffledHighViewProducts[i]);
-    }
-
-    // Prioritize new products (created within the last 3 weeks)
-    const newProducts = mixedProducts.filter(product => product.isNew);
-    const oldProducts = mixedProducts.filter(product => !product.isNew);
-
-    // Combine and shuffle the final list
-    const finalProducts = shuffleArray([...newProducts, ...oldProducts]);
-
-    // Paginate the final list
-    const paginatedProducts = finalProducts.slice(skip, skip + limit);
-
-    // Format products
-    const formattedProducts = paginatedProducts.map((product) => ({
-      _id: product._id,
-      images: product.images?.length ? [product.images[0]] : [],
-      brand: product.brand || null,
-      title: product.title,
-      size: product.size || null,
-      price: {
-        mrp: product.price.mrp,
-        cashPrice: product.price.cash?.enteredAmount,
-        coinPrice: product.price.coin?.enteredAmount,
-        mixPrice:
-          product.price.mix?.enteredCash && product.price.mix?.enteredCoin
-            ? { enteredCash: product.price.mix.enteredCash, enteredCoin: product.price.mix.enteredCoin }
-            : null,
-        sellerReceivesCash: product.price.cash?.sellerReceivesCash || 0,
-        sellerReceivesCoin: product.price.coin?.sellerReceivesCoin || 0,
-        sellerReceivesmixCoin: product.price.mix?.sellerReceivesCoin || 0,
-        sellerReceivesmixCash: product.price.mix?.sellerReceivesCash || 0,
-      },
-      seller: {
-        username: product.sellerId?.username || "Unknown",
-        avatar: product.sellerId?.avatar || null,
-      },
-      views: product.views, // Include views in the response for verification
-    }));
-    res.json({ success: true, page, totalPages: Math.ceil(products.length / limit), totalProducts: products.length, products: formattedProducts });
-
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
 });
 
 // Autocomplete route for search suggestion based on brand and primary/tertiary category
@@ -319,7 +524,7 @@ router.get("/products-cards/user/:userId", async (req, res) => {
     }
 
     const products = await Product.find(query)
-      .select("images brand title size price sellerId createdAt status") // Include status in selection
+      .select("images brand title size price sellerId createdAt status views") // Include status in selection
       .sort({ createdAt: -1 }) // Sorting in descending order (latest first)
       .skip(skip)
       .limit(pageSize)
@@ -331,12 +536,12 @@ router.get("/products-cards/user/:userId", async (req, res) => {
     const formattedProducts = products.map((product) => {
       const price = {
         mrp: product.price.mrp,
-        cashPrice: product.price.cash?.enteredAmount || false,
-        coinPrice: product.price.coin?.enteredAmount || false,
+        cashPrice: product.price.cash?.enteredAmount || null,
+        coinPrice: product.price.coin?.enteredAmount || null,
         mixPrice:
           product.price.mix?.enteredCash && product.price.mix?.enteredCoin
             ? { enteredCash: product.price.mix.enteredCash, enteredCoin: product.price.mix.enteredCoin }
-            : false,
+            : null,
         sellerReceivesCash: product.price.cash?.sellerReceivesCash || 0,
         sellerReceivesCoin: product.price.coin?.sellerReceivesCoin || 0,
         sellerReceivesmixCoin: product.price.mix?.sellerReceivesCoin || 0,
@@ -349,6 +554,7 @@ router.get("/products-cards/user/:userId", async (req, res) => {
         brand: product.brand || null,
         title: product.title,
         size: product.size || null,
+        views: product.views || 0,
         price,
         seller: {
           username: product.sellerId?.username || "Unknown",
